@@ -32,8 +32,6 @@ Error generating stack: `+u.message+`
   
 
 <div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
-<div id="livre-individual-root" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.85); overflow:auto; display:none; align-items:center; justify-content:center;"></div>
-<div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
 <div id="livre-individual-root" style="display:none;"></div>
 <script>
 (function(){
@@ -44,36 +42,30 @@ Error generating stack: `+u.message+`
   function getR(){ try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []} }
   function getC(){ try{return JSON.parse(localStorage.getItem(KC)||"[]")}catch{return []} }
 
-  // SINCRONIZAÇÃO FIREBASE - HISTÓRICO EM TODOS DISPOSITIVOS
   function syncConsumosToFirebase(allC){
     try{
-      fetch(FB_BASE+'/consumos.json', {method:'PUT', body:JSON.stringify(allC), headers:{'Content-Type':'application/json'}}).catch(()=>{});
-      // também limpa o antigo formato com POSTs
-      fetch(FB_BASE+'/consumos_backup.json', {method:'PUT', body:JSON.stringify({ultimo_sync: new Date().toISOString()}), headers:{'Content-Type':'application/json'}}).catch(()=>{});
+      // PUT direto - sobrescreve em todos dispositivos
+      fetch(FB_BASE+'/consumos.json', {method:'PUT', body:JSON.stringify(allC), headers:{'Content-Type':'application/json'}})
+      .then(r=>{ console.log('[SYNC] Consumos enviado Firebase:', allC.length); })
+      .catch(()=>{});
     }catch{}
   }
   async function fetchConsumosFromFirebase(){
     try{
-      const resp = await fetch(FB_BASE+'/consumos.json');
+      const resp = await fetch(FB_BASE+'/consumos.json?'+Date.now(), {cache:'no-store'});
       if(!resp.ok) return null;
       const data = await resp.json();
-      if(!data) return [];
-      // data pode ser array ou objeto com chaves push
+      if(!data) { localStorage.setItem(KC, JSON.stringify([])); return []; }
       let arr=[];
       if(Array.isArray(data)){ arr=data; }
       else if(typeof data==='object'){
-        // se for objeto { -Nxxx: {...}, ... } converter para array
         arr=Object.values(data).filter(v=>v && typeof v==='object' && v.id);
-        // se for objeto vazio ou com propriedades não array, tentar filtrar
-        if(arr.length===0 && data.length===undefined){
-          // pode ser que tenha sido salvo como objeto com índices numéricos
+        if(arr.length===0){
           const vals=Object.values(data);
           if(vals.length>0 && vals[0] && vals[0].sku) arr=vals;
         }
       }
-      // ordenar por id/data e salvar local
-      if(arr.length>0){
-        // remover duplicatas por id
+      if(arr.length>=0){
         const map=new Map();
         for(const r of arr){ if(r && r.id) map.set(String(r.id), r); }
         const dedup=Array.from(map.values());
@@ -81,18 +73,13 @@ Error generating stack: `+u.message+`
         return dedup;
       }
       return arr;
-    }catch(e){ return null; }
+    }catch(e){ console.log('fetch FB error', e); return null; }
   }
 
-  // ao carregar, tenta sincronizar histórico do Firebase
-  (async()=>{
-    try{
-      const fb = await fetchConsumosFromFirebase();
-      if(fb && fb.length>0){
-        console.log('[HISTÓRICO] Sincronizado do Firebase:', fb.length, 'registros');
-      }
-    }catch{}
-  })();
+  // Sincroniza ao carregar a página e a cada 15s para estorno aparecer em todos
+  (async()=>{ try{ await fetchConsumosFromFirebase(); }catch{} })();
+  setInterval(async()=>{ try{ await fetchConsumosFromFirebase(); }catch{} }, 15000);
+  window.addEventListener('focus', async()=>{ try{ await fetchConsumosFromFirebase(); }catch{} });
 
   function getAll(){
     try{
@@ -124,7 +111,7 @@ Error generating stack: `+u.message+`
         <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:none; cursor:pointer;">← Voltar</button>
         <div style="display:flex; gap:8px; align-items:center;">
           <button id="c-sync-fb" style="height:32px; padding:0 12px; border-radius:9999px; background:#3b82f6; color:white; font-size:11px; border:none; cursor:pointer;">🔄 Sincronizar</button>
-          <div style="font-size:12px; color:#71717a;">Total em estoque: <span style="color:#10b981; font-weight:bold;">${all.reduce((s,m)=>s+(m.total||0),0)} un</span></div>
+          <div style="font-size:12px; color:#71717a;">Total: <span style="color:#10b981; font-weight:bold;">${all.reduce((s,m)=>s+(m.total||0),0)} un</span></div>
         </div>
       </div>
 
@@ -193,7 +180,7 @@ Error generating stack: `+u.message+`
     </div>`;
 
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
-    const inp=document.getElementById('c-cod'); 
+    const inp=document.getElementById('c-cod');
     const res=document.getElementById('c-res'); const locaisDiv=document.getElementById('c-locais-lista');
     let sel=null; let selLocais=[];
 
@@ -230,14 +217,13 @@ Error generating stack: `+u.message+`
       } else {
         achados.sort((a,b)=>(a.ruaIndex-b.ruaIndex)||(a.nivel-b.nivel)||(a.div-b.div));
         const total=achados.reduce((s,a)=>s+a.qtd,0);
-        res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px 10px; border-radius:8px; font-size:12px;">✅ ${achados.length} localização(ões) com <b>${codRaw}</b> — Total ${total} un (busca em todas posições, IDs diferentes)</div>`;
+        res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px 10px; border-radius:8px; font-size:12px;">✅ ${achados.length} localização(ões) com <b>${codRaw}</b> — Total ${total} un</div>`;
         sel={codigo:achados[0].item.codigo, nome:achados[0].item.descricao||achados[0].item.codigo, total:total, achados:achados};
         selLocais=achados.map((a,i)=>({...a, idx:i, selecionado:true}));
         locaisDiv.innerHTML=achados.map((a,i)=>{
-          const ruaNome=a.ruaNome;
           return `<label style="background:#0e0e10; border:1px solid #10b981; border-radius:10px; padding:10px; display:flex; gap:10px; align-items:center; cursor:pointer;">
             <input type="checkbox" checked data-idx="${i}" class="c-loc-chk" style="width:18px; height:18px; accent-color:#10b981;">
-            <div style="flex:1;"><div style="color:white; font-weight:bold; font-size:12px;">${a.item.codigo}</div><div style="color:#a78bfa; font-size:11px;">📍 ${ruaNome} • N${String(a.nivel).padStart(2,'0')} • D${String(a.div).padStart(2,'0')} • ${a.posId} — Qtd: ${a.qtd}</div></div>
+            <div style="flex:1;"><div style="color:white; font-weight:bold; font-size:12px;">${a.item.codigo}</div><div style="color:#a78bfa; font-size:11px;">📍 ${a.ruaNome} • N${String(a.nivel).padStart(2,'0')} • D${String(a.div).padStart(2,'0')} • ${a.posId} — Qtd: ${a.qtd}</div></div>
           </label>`;
         }).join('');
         locaisDiv.querySelectorAll('.c-loc-chk').forEach(chk=>{
@@ -254,14 +240,9 @@ Error generating stack: `+u.message+`
 
     async function renderHist(filtro=''){
       const tbody=document.getElementById('c-hist-tbody'); const count=document.getElementById('c-hist-count'); const empty=document.getElementById('c-hist-empty'); const loading=document.getElementById('c-hist-loading');
-      // tenta sincronizar do Firebase antes de renderizar
       loading.style.display='block';
-      try{
-        const fb = await fetchConsumosFromFirebase();
-        if(fb){ console.log('Firebase sync ok', fb.length); }
-      }catch{}
+      try{ await fetchConsumosFromFirebase(); }catch{}
       loading.style.display='none';
-
       let allC=getC().slice().reverse();
       const f=filtro.toLowerCase();
       if(f){ allC=allC.filter(r=> String(r.ordem||'').toLowerCase().includes(f) || String(r.sku||r.codigo||'').toLowerCase().includes(f)); }
@@ -282,11 +263,18 @@ Error generating stack: `+u.message+`
       }).join('');
     }
 
-    window.estornarConsumo = function(id){
+    window.estornarConsumo = async function(id){
       try{
-        const allC=getC(); const reg=allC.find(r=>String(r.id)===String(id));
-        if(!reg){ alert('Registro não encontrado'); return; }
-        if(!confirm(`ESTORNAR?\nOP: ${reg.ordem}\nCódigo: ${reg.sku}\nQtd: ${reg.qtd}\n\nDevolver ao estoque?`)) return;
+        let allC=getC(); const reg=allC.find(r=>String(r.id)===String(id));
+        if(!reg){ 
+          // tenta buscar do Firebase antes
+          const fb=await fetchConsumosFromFirebase();
+          allC=getC();
+          const reg2=allC.find(r=>String(r.id)===String(id));
+          if(!reg2){ alert('Registro não encontrado - já foi estornado em outro dispositivo? Sincronizando...'); renderHist(document.getElementById('c-hist-filter').value||''); return; }
+          return window.estornarConsumo(id);
+        }
+        if(!confirm(`ESTORNAR?\nOP: ${reg.ordem}\nCódigo: ${reg.sku}\nQtd: ${reg.qtd}\n\nDevolver ao estoque e APAGAR em TODOS os dispositivos?`)) return;
         let pos=getP(); let restaurado=0;
         if(reg.log){
           const linhas=reg.log.split('\n');
@@ -301,16 +289,27 @@ Error generating stack: `+u.message+`
         }
         localStorage.setItem(KP, JSON.stringify(pos));
         try{ fetch(FB_BASE+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+
+        // REMOVE DO HISTORICO E SINCRONIZA PARA TODOS DISPOSITIVOS VIA PUT
         const novos=allC.filter(r=>String(r.id)!==String(id));
         localStorage.setItem(KC, JSON.stringify(novos));
+        // PUT para Firebase - sobrescreve para todos
         syncConsumosToFirebase(novos);
-        alert(`✅ ESTORNO OK - ${restaurado} un devolvidos`);
+
+        alert(`✅ ESTORNO OK - ${restaurado} un devolvidos e removido em TODOS os dispositivos`);
         renderHist(document.getElementById('c-hist-filter').value||'');
       }catch(e){ alert('Erro: '+e.message); }
     };
 
     document.getElementById('c-hist-filter').addEventListener('input', e=>{ renderHist(e.target.value); });
-    document.getElementById('c-hist-limpar').onclick=()=>{ if(confirm('Limpar todo histórico em TODOS os dispositivos?')){ const vazio=[]; localStorage.setItem(KC, JSON.stringify(vazio)); syncConsumosToFirebase(vazio); renderHist(); } };
+    document.getElementById('c-hist-limpar').onclick=()=>{ 
+      if(confirm('Limpar todo histórico em TODOS os dispositivos?')){
+        const vazio=[]; 
+        localStorage.setItem(KC, JSON.stringify(vazio)); 
+        syncConsumosToFirebase(vazio); 
+        renderHist(); 
+      } 
+    };
     document.getElementById('c-sync-fb').onclick=async()=>{ 
       const btn=document.getElementById('c-sync-fb'); btn.textContent='🔄 Sincronizando...';
       await fetchConsumosFromFirebase(); 
@@ -330,7 +329,7 @@ Error generating stack: `+u.message+`
         const selecionados=selLocais.filter(a=>a.selecionado);
         if(!selecionados.length){ alert('Selecione pelo menos 1 localização'); return; }
         const totalSel=selecionados.reduce((s,a)=>s+a.qtd,0);
-        if(q>totalSel){ alert('Saldo insuficiente nos locais selecionados: '+totalSel); return; }
+        if(q>totalSel){ alert('Saldo insuficiente: '+totalSel); return; }
         let rest=q; let pos=getP(); let logs=[];
         for(const selLoc of selecionados){
           if(rest<=0) break;
@@ -363,10 +362,7 @@ Error generating stack: `+u.message+`
         msg.innerHTML=`<div style="color:#10b981; font-weight:bold;">✅ BAIXA COM OP REALIZADA - SALVO EM TODOS DISPOSITIVOS</div><div style="margin-top:6px;"><span style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; padding:4px 10px; font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px; color:#a1a1aa; margin-top:6px;">${logs.join('<br>')}</div>`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.border='1px solid #10b981';
         renderHist(document.getElementById('c-hist-filter').value||'');
-
-        // LIMPAR TODOS OS CAMPOS APÓS CONSUMO
         limparCamposConsumo();
-
         setTimeout(()=>{ msg.style.display='none'; },5000);
       }catch(e){ alert(e.message); }
     };
@@ -435,7 +431,4 @@ Error generating stack: `+u.message+`
   window.addEventListener('load', init);
 })();
 </script>
-
-
-</body>
-</html>
+</body></html>
