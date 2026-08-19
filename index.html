@@ -42,19 +42,16 @@ Error generating stack: `+u.message+`
   function getR(){ try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []} }
   function getC(){ try{return JSON.parse(localStorage.getItem(KC)||"[]")}catch{return []} }
 
-  // NOVA FUNÇÃO: busca direto nas posições por código, agregando TODAS as ocorrências mesmo com IDs diferentes
   function buscarMultiLocal(codigoBusca){
     const cod=(codigoBusca||'').trim().toLowerCase();
     if(!cod) return null;
     const pos=getP();
     const livre=getL();
     const ruas=getR();
-
     let achadosPos=[];
     let totalPos=0;
     let idsEncontrados=new Set();
     let nomeDesc='';
-
     for(const p of pos){
       for(const it of (p.itens||[])){
         if(String(it.codigo||'').toLowerCase()===cod || String(it.codigo||'').toLowerCase().includes(cod)){
@@ -68,7 +65,8 @@ Error generating stack: `+u.message+`
             codigo:it.codigo,
             desc:it.descricao||'',
             materialId:it.materialId,
-            ruaNome:ruaNome
+            ruaNome:ruaNome,
+            uniqueKey: `${p.posId}-${it.materialId}-${p.ruaIndex}`
           });
           totalPos+=Number(it.qtd)||0;
           idsEncontrados.add(String(it.materialId));
@@ -76,28 +74,23 @@ Error generating stack: `+u.message+`
         }
       }
     }
-
-    // Busca também no LIVRE por mesmo código
     let achadosLivre=[];
     let totalLivre=0;
     for(const m of livre){
       if(String(m.codigo||'').toLowerCase()===cod || String(m.sku||'').toLowerCase()===cod || String(m.codigo||'').toLowerCase().includes(cod)){
         let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
         if(s>0){
-          achadosLivre.push({codigo:m.codigo||m.sku, desc:m.descricao||m.nome||'', q:s, id:m.id});
+          achadosLivre.push({codigo:m.codigo||m.sku, desc:m.descricao||m.nome||'', q:s, id:m.id, uniqueKey:`LIVRE-${m.id}`});
           totalLivre+=s;
           idsEncontrados.add(String(m.id));
           if(!nomeDesc) nomeDesc=m.descricao||m.nome||m.codigo;
         }
       }
     }
-
     if(achadosPos.length===0 && achadosLivre.length===0) return null;
-
     const totalGeral=totalPos+totalLivre;
     const porRua={};
     achadosPos.forEach(a=>{ if(!porRua[a.ruaNome]) porRua[a.ruaNome]={total:0, pos:[]}; porRua[a.ruaNome].total+=a.q; porRua[a.ruaNome].pos.push(a); });
-
     return {
       codigo: codigoBusca.trim(),
       codigoLower: cod,
@@ -111,7 +104,6 @@ Error generating stack: `+u.message+`
       numLocalizacoes: achadosPos.length,
       numRuas: Object.keys(porRua).length,
       ids: Array.from(idsEncontrados),
-      // Para compatibilidade com baixa, usa primeiro ID encontrado
       id: idsEncontrados.size>0 ? Array.from(idsEncontrados)[0] : codigoBusca.trim(),
       sku: codigoBusca.trim().toUpperCase(),
       livreTotal: totalLivre,
@@ -211,47 +203,51 @@ Error generating stack: `+u.message+`
       <div style="max-width:1440px; margin:0 auto; padding:16px; font-family:Inter,system-ui;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30;">← Voltar</button>
-          <div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un | ${all.length} códigos</div>
+          <div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div>
         </div>
 
         <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V24 - CORRIGIDO MULTI-LOCALIZAÇÃO</div>
-            <div style="font-size:10px; color:#10b981; background:#0e0e10; border:1px solid #10b981; border-radius:9999px; padding:4px 10px;">Corrige bug que mostrava só 1 local</div>
+            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V25 - Escolher de qual posição baixar</div>
+            <div style="font-size:10px; color:#10b981; background:#0e0e10; border:1px solid #10b981; border-radius:9999px; padding:4px 10px;">NOVO: Selecionar posição</div>
           </div>
 
           <div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;">
-            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO (agora busca em TODAS as posições, mesmo com IDs diferentes)</label>
+            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO</label>
             <div style="display:flex; gap:8px; margin-top:6px;">
-              <input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="Digite código exato e ENTER">
-              <button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR TODAS LOCALIZAÇÕES</button>
+              <input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970 + ENTER">
+              <button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR</button>
             </div>
             <div id="c-res" style="margin-top:8px;"></div>
           </div>
 
           <div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:14px; margin-bottom:12px;">
             <div id="c-header-local" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;"></div>
-            <div style="display:flex; gap:12px;">
-              <div style="background:#7c3aed; border-radius:10px; width:56px; height:56px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:11px; text-align:center; flex-shrink:0;" id="c-icone">Rua</div>
-              <div style="flex:1;">
-                <div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div>
-                <div id="c-sku" style="color:#71717a; font-size:11px; margin-top:2px;"></div>
-                <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;" id="c-badges"></div>
-                <div id="c-pos-detalhe" style="margin-top:10px; display:flex; flex-direction:column; gap:8px;"></div>
-                <div style="margin-top:10px; padding:8px; background:#151518; border:1px solid #2a2a30; border-radius:8px; font-size:11px; color:#71717a;">Total: <span id="c-total" style="color:#10b981; font-size:18px; font-weight:bold;"></span> un | <span id="c-livre-aloc"></span> | <span id="c-multi-info" style="color:#fbbf24; font-weight:bold;"></span></div>
-              </div>
+            <div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div>
+            <div id="c-sku" style="color:#71717a; font-size:11px; margin-top:2px;"></div>
+            <div style="margin-top:10px; padding:10px; background:#151518; border:1px solid #fbbf24; border-radius:10px;">
+              <div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE DE QUAL POSIÇÃO VAI FAZER A BAIXA (clique para selecionar):</div>
+              <div id="c-pos-detalhe" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
+            <div style="margin-top:10px; padding:8px; background:#151518; border:1px solid #2a2a30; border-radius:8px; font-size:11px; color:#71717a; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>Total selecionado: <span id="c-total-selecionado" style="color:#fbbf24; font-weight:bold; font-size:14px;">0 un</span> | Total geral: <span id="c-total" style="color:#10b981; font-size:16px; font-weight:bold;"></span> un | <span id="c-livre-aloc"></span></div>
+              <div id="c-multi-info" style="color:#fbbf24; font-weight:bold; font-size:11px;"></div>
+            </div>
+            <div id="c-selecao-resumo" style="margin-top:8px; display:none; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:8px; padding:8px; font-size:11px; color:#fbbf24;"></div>
           </div>
 
           <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:12px; padding:12px;">
-            <div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Baixa com OP:</div>
+            <div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Baixa com OP - da(s) posição(ões) selecionada(s):</div>
             <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
               <div><label style="font-size:10px; color:#a1a1aa;">Qtd *</label><input id="c-qtd" type="number" style="width:100%; height:44px; background:#151518; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:15px; font-weight:bold; margin-top:4px;" placeholder="5"></div>
               <div><label style="font-size:10px; color:#fbbf24; font-weight:bold;">OP *</label><input id="c-op" style="width:100%; height:44px; background:#151518; border:2px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; font-size:14px; font-weight:bold; margin-top:4px;" placeholder="OP 12345"></div>
               <div><label style="font-size:10px; color:#a1a1aa;">Tipo</label><select id="c-tipo" style="width:100%; height:44px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; margin-top:4px;"><option>Produção</option><option>Perda</option><option>Devolução</option><option>Ajuste</option><option>Outro</option></select></div>
             </div>
             <div style="margin-top:10px;"><label style="font-size:10px; color:#a1a1aa;">Obs</label><input id="c-obs" style="width:100%; height:38px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; font-size:12px; margin-top:4px;" placeholder="Obs..."></div>
-            <button id="c-btn" style="width:100%; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:15px; margin-top:12px;">✓ CONFIRMAR BAIXA COM OP</button>
+            <div style="display:flex; gap:10px; margin-top:12px;">
+              <button id="c-btn-todas" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold; font-size:12px;">Baixar de TODAS as posições (automático)</button>
+              <button id="c-btn" style="flex:2; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px;">✓ BAIXAR DA(S) POSIÇÃO(ÕES) SELECIONADA(S)</button>
+            </div>
             <div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap; font-size:12px;"></div>
           </div>
         </div>
@@ -267,7 +263,7 @@ Error generating stack: `+u.message+`
           <div style="overflow:auto; max-height:400px;">
             <table style="width:100%; font-size:11px; color:#d4d4d8; border-collapse:collapse;">
               <thead style="position:sticky; top:0; background:#0e0e10; font-size:10px; color:#71717a; border-bottom:1px solid #232326;">
-                <tr><th style="padding:10px; text-align:left;">Data</th><th style="padding:10px; text-align:left;">Código</th><th style="padding:10px; text-align:left;">Qtd</th><th style="padding:10px; text-align:left;">OP</th><th style="padding:10px; text-align:left;">Localização</th><th style="padding:10px; text-align:left;">Obs</th><th style="padding:10px; text-align:center;">Ação</th></tr>
+                <tr><th style="padding:10px; text-align:left;">Data</th><th style="padding:10px; text-align:left;">Código</th><th style="padding:10px; text-align:left;">Qtd</th><th style="padding:10px; text-align:left;">OP</th><th style="padding:10px; text-align:left;">Posição selecionada</th><th style="padding:10px; text-align:left;">Obs</th><th style="padding:10px; text-align:center;">Ação</th></tr>
               </thead>
               <tbody id="c-tbody"></tbody>
             </table>
@@ -279,6 +275,7 @@ Error generating stack: `+u.message+`
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
     const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card');
     let sel=null;
+    let posicoesSelecionadas=new Set(); // armazena uniqueKey das posições selecionadas
 
     function renderHistorico(){
       const tbody=document.getElementById('c-tbody');
@@ -294,11 +291,11 @@ Error generating stack: `+u.message+`
       tbody.innerHTML=lista.map(h=>`
         <tr style="border-bottom:1px solid #1e1e22;">
           <td style="padding:10px; font-size:10px; color:#71717a;">${h.data||''}</td>
-          <td style="padding:10px;"><div style="color:white; font-weight:bold; font-size:11px;">${h.sku||''}</div><div style="color:#71717a; font-size:9px;">${(h.nome||'').substring(0,30)}</div></td>
+          <td style="padding:10px;"><div style="color:white; font-weight:bold; font-size:11px;">${h.sku||''}</div></td>
           <td style="padding:10px; color:#ef4444; font-weight:bold;">-${h.qtd||0}</td>
           <td style="padding:10px;"><span style="background:#fbbf24; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">${h.op||'SEM OP'}</span></td>
           <td style="padding:10px; font-size:9px; color:#a78bfa; white-space:pre-wrap; max-width:180px;">${h.log||''}</td>
-          <td style="padding:10px; font-size:9px; color:#71717a; max-width:120px;">${h.obs||''}<div style="font-size:8px;">${h.tipo||''}</div></td>
+          <td style="padding:10px; font-size:9px; color:#71717a;">${h.obs||''}</td>
           <td style="padding:10px; text-align:center;"><button class="btn-estornar" data-id="${h.id}" style="height:28px; padding:0 10px; border-radius:9999px; background:#ef4444; color:white; font-size:10px; font-weight:bold; border:none;">↩ Estornar</button></td>
         </tr>
       `).join('');
@@ -355,84 +352,144 @@ Error generating stack: `+u.message+`
       });
     }
 
+    function atualizarSelecao(){
+      const totalSelEl=document.getElementById('c-total-selecionado');
+      const resumoEl=document.getElementById('c-selecao-resumo');
+      if(!sel) return;
+      let totalSelecionado=0;
+      let selecionadas=[];
+      if(sel.pos) sel.pos.forEach(p=>{ if(posicoesSelecionadas.has(p.uniqueKey)) { totalSelecionado+=p.q; selecionadas.push(p); } });
+      if(sel.livre) sel.livre.forEach(l=>{ if(posicoesSelecionadas.has(l.uniqueKey)) { totalSelecionado+=l.q; selecionadas.push(l); } });
+
+      totalSelEl.textContent=totalSelecionado+' un';
+      if(selecionadas.length>0){
+        resumoEl.style.display='block';
+        resumoEl.innerHTML=`<div style="font-weight:bold; margin-bottom:4px;">✅ ${selecionadas.length} posição(ões) selecionada(s) para baixa: Total ${totalSelecionado} un</div>` + selecionadas.map(s=>`<div>• ${s.ruaNome||'LIVRE'} ${s.posId||''} - ${s.q} un (código ${s.codigo})</div>`).join('');
+      } else {
+        resumoEl.style.display='none';
+      }
+
+      // Atualiza visual dos cards selecionados
+      document.querySelectorAll('.pos-card').forEach(cardEl=>{
+        const key=cardEl.dataset.key;
+        if(posicoesSelecionadas.has(key)){
+          cardEl.style.borderColor='#fbbf24';
+          cardEl.style.background='rgba(251,191,36,0.1)';
+          cardEl.querySelector('.check-icon').textContent='✅';
+          cardEl.querySelector('.check-icon').style.background='#fbbf24';
+          cardEl.querySelector('.check-icon').style.color='black';
+        } else {
+          cardEl.style.borderColor='#2a2a30';
+          cardEl.style.background='#151518';
+          cardEl.querySelector('.check-icon').textContent='☐';
+          cardEl.querySelector('.check-icon').style.background='#232326';
+          cardEl.querySelector('.check-icon').style.color='white';
+        }
+      });
+    }
+
     function selMatMulti(m){
       sel=m;
+      posicoesSelecionadas=new Set();
       card.style.display='block';
       const ruas=getR();
       document.getElementById('c-nome').textContent=m.nome||m.codigo;
-      document.getElementById('c-sku').textContent=`${m.codigo} | ${m.pos.length} localização(ões) física(s) + ${m.livre.length} no Livre | IDs diferentes: ${m.ids.length}`;
+      document.getElementById('c-sku').textContent=`${m.codigo} | ${m.numLocalizacoes} posição(ões) física(s) + ${m.livre.length} no Livre | IDs: ${m.ids.length}`;
       document.getElementById('c-total').textContent=m.total;
       document.getElementById('c-livre-aloc').textContent=`Livre: ${m.totalLivre} un | Alocado: ${m.totalPos} un`;
-      document.getElementById('c-multi-info').textContent= m.numLocalizacoes===0 ? 'SÓ NO LIVRE' : m.numLocalizacoes===1 ? '1 LOCALIZAÇÃO FÍSICA' : `${m.numLocalizacoes} LOCALIZAÇÕES FÍSICAS EM ${m.numRuas} RUA(S)`;
+      document.getElementById('c-multi-info').textContent= m.numLocalizacoes===0 ? 'SÓ NO LIVRE' : m.numLocalizacoes===1 ? '1 LOCALIZAÇÃO' : `${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S)`;
 
       const header=document.getElementById('c-header-local');
       if(m.numLocalizacoes===0){
-        header.innerHTML=`<div style="background:rgba(251,191,36,0.15); border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24; font-weight:bold;">📦 SÓ NO LIVRE - ${m.totalLivre} un</div><div style="font-size:10px; color:#71717a;">Total: ${m.total} un</div>`;
+        header.innerHTML=`<div style="background:rgba(251,191,36,0.15); border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24; font-weight:bold;">📦 SÓ NO LIVRE - ${m.totalLivre} un (clique abaixo para selecionar)</div><div style="font-size:10px; color:#71717a;">Total: ${m.total} un</div>`;
       } else if(m.numLocalizacoes===1){
         const p=m.pos[0];
-        header.innerHTML=`<div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:9999px; padding:6px 12px; font-size:11px; color:#10b981; font-weight:bold;">📍 1 LOCALIZAÇÃO: ${p.ruaNome} N${String(p.ni).padStart(2,'0')} D${String(p.dv).padStart(2,'0')} Pos ${p.posId} (${p.q} un)</div><div style="font-size:10px; color:#71717a;">Total: ${m.total} un em 1 local + ${m.totalLivre} livre</div>`;
+        header.innerHTML=`<div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:9999px; padding:6px 12px; font-size:11px; color:#10b981; font-weight:bold;">📍 1 LOCALIZAÇÃO: ${p.ruaNome} N${String(p.ni).padStart(2,'0')} D${String(p.dv).padStart(2,'0')} (${p.q} un) - Clique para selecionar</div><div style="font-size:10px; color:#71717a;">Total: ${m.total} un</div>`;
       } else {
-        header.innerHTML=`<div style="background:rgba(124,58,237,0.15); border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${m.numLocalizacoes} LOCALIZAÇÕES FÍSICAS EM ${m.numRuas} RUA(S) - Total ${m.totalPos} un alocado + ${m.totalLivre} un livre = ${m.total} un</div><div style="font-size:10px; color:#fbbf24; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; font-weight:bold;">⚠️ Multi-local! ${m.numLocalizacoes} posições</div>`;
+        header.innerHTML=`<div style="background:rgba(124,58,237,0.15); border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S) - Selecione de qual(ais) posição(ões) vai baixar - Total ${m.totalPos} un + Livre ${m.totalLivre} un = ${m.total} un</div><div style="font-size:10px; color:#fbbf24; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; font-weight:bold;">👇 Clique nas posições abaixo para selecionar</div>`;
       }
 
-      const badges=document.getElementById('c-badges');
-      if(m.numLocalizacoes===0){
-        badges.innerHTML=`<span style="background:#0e0e10; border:1px solid #fbbf24; border-radius:9999px; padding:4px 10px; font-size:11px; color:#fbbf24;">📦 Só no LIVRE: ${m.totalLivre} un</span>`;
-        document.getElementById('c-icone').innerHTML='LIVRE<br>'+m.totalLivre;
-      } else if(m.numLocalizacoes===1){
-        const p=m.pos[0];
-        badges.innerHTML=`<span style="background:#10b981; color:black; border-radius:9999px; padding:4px 10px; font-size:11px; font-weight:bold;">1 LOCALIZAÇÃO</span><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa;">📍 ${p.ruaNome}</span><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#10b981;">N${String(p.ni).padStart(2,'0')} D${String(p.dv).padStart(2,'0')} Qtd ${p.q}</span>`;
-        document.getElementById('c-icone').innerHTML=`${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}`;
-      } else {
-        badges.innerHTML=`<span style="background:#7c3aed; color:white; border-radius:9999px; padding:4px 10px; font-size:11px; font-weight:bold;">${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S)</span>` + Object.entries(m.porRua).map(([rua, dados])=>`<span style="background:#0e0e10; border:1px solid #7c3aed; border-radius:9999px; padding:4px 10px; font-size:10px; color:#a78bfa;">${rua}: ${dados.total} un (${dados.pos.length} pos)</span>`).join('') + (m.totalLivre>0? `<span style="background:#0e0e10; border:1px solid #fbbf24; border-radius:9999px; padding:4px 10px; font-size:10px; color:#fbbf24;">LIVRE: ${m.totalLivre} un</span>` : '');
-        document.getElementById('c-icone').innerHTML=`${m.numLocalizacoes}<br>LOCAIS`;
-      }
-
+      // Monta lista de posições selecionáveis
       const detalhe=document.getElementById('c-pos-detalhe');
-      if(m.pos.length===0){
-        detalhe.innerHTML=`<div style="background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:8px; padding:10px; font-size:11px; color:#fbbf24;">📦 Só no LIVRE com ${m.totalLivre} un. IDs encontrados: ${m.ids.join(', ')}</div>`;
-      } else {
-        let htmlResumo=`<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; margin-bottom:8px;"><div style="font-size:11px; color:white; font-weight:bold; margin-bottom:6px;">📊 RESUMO POR RUA (agora mostra TODAS as posições com mesmo código, mesmo com IDs diferentes):</div><div style="display:flex; gap:6px; flex-wrap:wrap;">`;
-        Object.entries(m.porRua).forEach(([rua, dados])=>{
-          htmlResumo+=`<span style="background:#0e0e10; border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">${rua}: ${dados.total} un em ${dados.pos.length} posição(ões)</span>`;
-        });
-        if(m.totalLivre>0) htmlResumo+=`<span style="background:#0e0e10; border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24;">LIVRE: ${m.totalLivre} un</span>`;
-        htmlResumo+=`</div><div style="margin-top:8px; font-size:10px; color:#71717a;">IDs diferentes encontrados para mesmo código: ${m.ids.length} ID(s) - ${m.ids.join(', ')}</div></div>`;
+      let html='';
 
-        htmlResumo+=m.pos.map(p=>{
+      // Se só tem 1 posição, já seleciona automaticamente
+      if(m.pos.length===1 && m.livre.length===0){
+        posicoesSelecionadas.add(m.pos[0].uniqueKey);
+      }
+
+      if(m.pos.length>0){
+        html+=`<div style="font-size:11px; color:white; font-weight:bold; margin-bottom:6px;">📍 POSIÇÕES NAS RUAS (clique para selecionar/desselecionar):</div>`;
+        html+=m.pos.map(p=>{
+          const isSelected=posicoesSelecionadas.has(p.uniqueKey);
           return `
-            <div style="background:#151518; border:1px solid ${m.numLocalizacoes>1? '#7c3aed' : '#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+            <div class="pos-card" data-key="${p.uniqueKey}" style="background:${isSelected? 'rgba(251,191,36,0.1)' : '#151518'}; border:2px solid ${isSelected? '#fbbf24' : '#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.2s;">
               <div style="display:flex; gap:8px; align-items:center;">
-                <div style="background:${m.numLocalizacoes>1? '#7c3aed' : '#10b981'}; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:${m.numLocalizacoes>1? 'white' : 'black'}; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div>
+                <div class="check-icon" style="width:28px; height:28px; border-radius:9999px; background:${isSelected? '#fbbf24' : '#232326'}; color:${isSelected? 'black' : 'white'}; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px;">${isSelected? '✅' : '☐'}</div>
+                <div style="background:#7c3aed; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div>
                 <div>
-                  <div style="font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${p.ruaNome} → Nível ${p.ni} → Div ${p.dv} → Pos ${p.posId} - ${p.q} un</div>
-                  <div style="font-size:10px; color:#71717a; font-family:monospace;">PosID: ${p.posId} | Código: ${p.codigo} | ID: ${p.materialId} | Qtd: ${p.q}</div>
-                  <div style="font-size:10px; color:#10b981; margin-top:2px;">Localização completa: ${p.ruaNome} N${String(p.ni).padStart(2,'0')} D${String(p.dv).padStart(2,'0')} - ${p.posId} (${p.q} un)</div>
+                  <div style="font-size:11px; color:#a78bfa; font-weight:bold;">${p.ruaNome} → Nível ${p.ni} → Div ${p.dv} → Pos ${p.posId}</div>
+                  <div style="font-size:10px; color:#71717a; font-family:monospace;">Código: ${p.codigo} | ID: ${p.materialId} | Qtd nesta posição: ${p.q} un</div>
                 </div>
               </div>
-              <div style="background:${m.numLocalizacoes>1? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:6px 12px; font-size:12px; color:${m.numLocalizacoes>1? 'white' : 'black'}; font-weight:bold;">${p.q} un</div>
+              <div style="display:flex; flex-direction:column; align-items:end; gap:4px;">
+                <div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; font-size:12px; color:white; font-weight:bold;">${p.q} un</div>
+                <div style="font-size:9px; color:#71717a;">${isSelected? 'Selecionada' : 'Clique para selecionar'}</div>
+              </div>
             </div>
           `;
         }).join('');
-        detalhe.innerHTML=htmlResumo;
       }
 
-      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; padding:10px; border-radius:8px; font-size:12px;">
-        <div style="font-weight:bold;">✅ ENCONTRADO: ${m.codigo} - Total ${m.total} un</div>
-        <div style="margin-top:6px; font-size:11px;">
-          ${m.numLocalizacoes===0? `📦 Só no LIVRE: ${m.totalLivre} un` :
-            m.numLocalizacoes===1? `📍 1 LOCALIZAÇÃO: ${m.pos[0].ruaNome} N${m.pos[0].ni} D${m.pos[0].dv} Pos ${m.pos[0].posId} (${m.pos[0].q} un) + Livre ${m.totalLivre} un = Total ${m.total} un` :
-            `⚠️ ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S): ${Object.entries(m.porRua).map(([r,d])=>`${r} ${d.total}un`).join(', ')} + Livre ${m.totalLivre}un = Total ${m.total}un`
+      if(m.livre.length>0){
+        html+=`<div style="font-size:11px; color:#fbbf24; font-weight:bold; margin-top:12px; margin-bottom:6px;">📦 NO LIVRE (clique para selecionar):</div>`;
+        html+=m.livre.map(l=>{
+          const isSelected=posicoesSelecionadas.has(l.uniqueKey);
+          return `
+            <div class="pos-card" data-key="${l.uniqueKey}" style="background:${isSelected? 'rgba(251,191,36,0.1)' : '#151518'}; border:2px solid ${isSelected? '#fbbf24' : '#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+              <div style="display:flex; gap:8px; align-items:center;">
+                <div class="check-icon" style="width:28px; height:28px; border-radius:9999px; background:${isSelected? '#fbbf24' : '#232326'}; color:${isSelected? 'black' : 'white'}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${isSelected? '✅' : '☐'}</div>
+                <div style="background:#fbbf24; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:9px;">LIVRE</div>
+                <div>
+                  <div style="font-size:11px; color:#fbbf24; font-weight:bold;">📦 LIVRE - ${l.q} un</div>
+                  <div style="font-size:10px; color:#71717a;">Código: ${l.codigo} | ID: ${l.id}</div>
+                </div>
+              </div>
+              <div style="background:#fbbf24; border-radius:9999px; padding:6px 12px; font-size:12px; color:black; font-weight:bold;">${l.q} un</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      detalhe.innerHTML=html;
+
+      // Adiciona clique para selecionar/desselecionar
+      detalhe.querySelectorAll('.pos-card').forEach(cardEl=>{
+        cardEl.onclick=()=>{
+          const key=cardEl.dataset.key;
+          if(posicoesSelecionadas.has(key)){
+            posicoesSelecionadas.delete(key);
+          } else {
+            posicoesSelecionadas.add(key);
           }
-        </div>
-        <div style="font-size:10px; color:#71717a; margin-top:6px;">IDs diferentes para mesmo código: ${m.ids.length} | ${m.ids.join(', ')} | Isso explica porque antes mostrava só 1 - IDs diferentes</div>
+          atualizarSelecao();
+        };
+      });
+
+      // Atualiza seleção inicial
+      setTimeout(()=>atualizarSelecao(), 100);
+
+      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; padding:10px; border-radius:8px; font-size:12px;">
+        <div style="font-weight:bold;">✅ ENCONTRADO: ${m.codigo} - Total ${m.total} un em ${m.numLocalizacoes} posição(ões) física(s) + ${m.totalLivre} un no Livre</div>
+        <div style="margin-top:6px; font-size:11px; color:#fbbf24; font-weight:bold;">👇 Agora selecione abaixo de qual posição você quer fazer a baixa (pode selecionar várias)</div>
+        <div style="font-size:10px; color:#71717a; margin-top:4px;">Se estiver em 2 localizações, clique nas 2 que quer baixar, ou só em 1 se quiser baixar só de uma Rua</div>
       </div>`;
     }
 
     function doBusca(){
       const cod=inp.value.trim(); if(!cod){ res.innerHTML='<div style="color:#ef4444;">Digite código</div>'; return; }
       const m=buscarMultiLocal(cod);
-      if(m) selMatMulti(m); else { res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:8px; border-radius:8px;">❌ Código <b>${cod}</b> não encontrado em nenhuma posição nem no Livre. Total de materiais: ${getL().length} no Livre + ${getP().filter(p=>p.itens&&p.itens.length>0).length} posições ocupadas</div>`; card.style.display='none'; sel=null; }
+      if(m) selMatMulti(m); else { res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:8px; border-radius:8px;">❌ Código <b>${cod}</b> não encontrado</div>`; card.style.display='none'; sel=null; }
     }
 
     btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } });
@@ -442,49 +499,97 @@ Error generating stack: `+u.message+`
     limparHist?.addEventListener('click', ()=>{ buscaHist.value=''; renderHistorico(); });
     renderHistorico();
 
-    document.getElementById('c-btn').onclick=async()=>{
+    // Função que faz baixa só das posições selecionadas
+    async function fazerBaixa(apenasSelecionadas){
       try{
         if(!sel){ alert('Busque o código primeiro!'); return; }
         const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Digite Qtd válida'); return; }
-        if(q>sel.total){ alert(`Saldo insuficiente! Total: ${sel.total}`); return; }
         const op=(document.getElementById('c-op').value||'').trim();
         if(!op){ alert('Digite o número da OP!'); document.getElementById('c-op').focus(); return; }
         const tipo=document.getElementById('c-tipo').value||'Produção';
         const obs=(document.getElementById('c-obs').value||'').trim();
 
+        // Verifica se tem posições selecionadas
+        let selecionadas=[];
+        if(apenasSelecionadas){
+          if(posicoesSelecionadas.size===0){ alert('Selecione pelo menos 1 posição clicando nos cards amarelos acima!'); return; }
+          sel.pos.forEach(p=>{ if(posicoesSelecionadas.has(p.uniqueKey)) selecionadas.push({tipo:'pos', dados:p}); });
+          sel.livre.forEach(l=>{ if(posicoesSelecionadas.has(l.uniqueKey)) selecionadas.push({tipo:'livre', dados:l}); });
+          const totalSelecionado=selecionadas.reduce((s, item)=>s+item.dados.q, 0);
+          if(q>totalSelecionado){ alert(`Você selecionou posições com total de ${totalSelecionado} un, mas quer baixar ${q} un. Selecione mais posições ou diminua a Qtd.`); return; }
+        }
+
         let rest=q; let pos=getP(); let livre=getL(); let logs=[];
         const ruas=getR();
-        // Baixa de TODAS as ocorrências do mesmo código, independente de ID
-        for(const p of pos){
-          if(rest<=0) break;
-          for(let i=0;i<(p.itens||[]).length;i++){
+
+        if(apenasSelecionadas){
+          // Baixa só das selecionadas, na ordem que foram selecionadas
+          for(const selItem of selecionadas){
             if(rest<=0) break;
-            const it=p.itens[i];
-            if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
-              const disp=Number(it.qtd)||0; if(disp<=0) continue;
-              const usar=Math.min(disp, rest);
-              const ruaNome=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`;
-              logs.push(`${ruaNome} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar}) [ID ${it.materialId}]`);
-              it.qtd=disp-usar; rest-=usar;
-              if(it.qtd<=0){ p.itens.splice(i,1); i--; }
-            }
-          }
-        }
-        pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        if(rest>0){
-          for(const m of livre){
-            if(String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase() || String(m.sku||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
+            if(selItem.tipo==='pos'){
+              const pOriginal=selItem.dados;
+              const p=pos.find(pp=>pp.posId===pOriginal.posId && pp.ruaIndex===pOriginal.ri);
+              if(!p) continue;
+              for(let i=0;i<p.itens.length;i++){
+                if(rest<=0) break;
+                const it=p.itens[i];
+                if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
+                  const disp=Number(it.qtd)||0; if(disp<=0) continue;
+                  const usar=Math.min(disp, rest);
+                  const ruaNome=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`;
+                  logs.push(`${ruaNome} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar}) [Selecionada]`);
+                  it.qtd=disp-usar; rest-=usar;
+                  if(it.qtd<=0){ p.itens.splice(i,1); i--; }
+                }
+              }
+            } else if(selItem.tipo==='livre'){
+              const lOriginal=selItem.dados;
+              const m=livre.find(mm=>String(mm.id)===String(lOriginal.id));
+              if(!m) continue;
               let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
               if(s<=0) continue;
               const usar=Math.min(s, rest);
-              logs.push(`LIVRE: ${s}→${s-usar} (-${usar}) [ID ${m.id}]`);
+              logs.push(`LIVRE: ${s}→${s-usar} (-${usar}) [Selecionada ID ${m.id}]`);
               m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo;
               rest-=usar;
+            }
+          }
+        } else {
+          // Baixa de TODAS as posições (comportamento antigo)
+          for(const p of pos){
+            if(rest<=0) break;
+            for(let i=0;i<(p.itens||[]).length;i++){
               if(rest<=0) break;
+              const it=p.itens[i];
+              if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
+                const disp=Number(it.qtd)||0; if(disp<=0) continue;
+                const usar=Math.min(disp, rest);
+                const ruaNome=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`;
+                logs.push(`${ruaNome} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar}) [Todas]`);
+                it.qtd=disp-usar; rest-=usar;
+                if(it.qtd<=0){ p.itens.splice(i,1); i--; }
+              }
+            }
+          }
+          pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
+          if(rest>0){
+            for(const m of livre){
+              if(String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase() || String(m.sku||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
+                let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
+                if(s<=0) continue;
+                const usar=Math.min(s, rest);
+                logs.push(`LIVRE: ${s}→${s-usar} (-${usar}) [Todas]`);
+                m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo;
+                rest-=usar;
+                if(rest<=0) break;
+              }
             }
           }
         }
-        if(rest>0){ alert(`Faltam ${rest} un! Disponível: ${q-rest}`); return; }
+
+        pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
+
+        if(rest>0){ alert(`Faltam ${rest} un! Disponível nas posições selecionadas: ${q-rest}`); return; }
 
         localStorage.setItem(KP, JSON.stringify(pos));
         localStorage.setItem(KM, JSON.stringify(livre));
@@ -496,16 +601,19 @@ Error generating stack: `+u.message+`
           ]);
         }catch{}
 
-        const reg={id:Date.now(), materialId:sel.id, sku:sel.codigo, nome:sel.nome||sel.codigo, qtd:q, op:op, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), totalAntes:sel.total, totalDepois:sel.total-q, ids:sel.ids};
+        const reg={id:Date.now(), materialId:sel.id, sku:sel.codigo, nome:sel.nome||sel.codigo, qtd:q, op:op, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), totalAntes:sel.total, totalDepois:sel.total-q, ids:sel.ids, posicoesSelecionadas: apenasSelecionadas? Array.from(posicoesSelecionadas) : ['TODAS']};
         const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
 
         const msg=document.getElementById('c-msg');
-        msg.textContent=`✅ BAIXA COM OP! ${q} un de ${sel.codigo}\nOP: ${op} | Tipo: ${tipo}\n`+logs.join('\n')+`\nDe: ${sel.total} → Para: ${sel.total-q} un\n${sel.numLocalizacoes>1? `Baixou de ${sel.numLocalizacoes} localizações diferentes!` : ''}\nRecarregando...`;
+        msg.textContent=`✅ BAIXA ${apenasSelecionadas? 'DA(S) POSIÇÃO(ÕES) SELECIONADA(S)' : 'DE TODAS AS POSIÇÕES'}!\n${q} un de ${sel.codigo}\nOP: ${op} | Tipo: ${tipo}\n`+logs.join('\n')+`\nDe: ${sel.total} → Para: ${sel.total-q} un\nRecarregando...`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
         renderHistorico();
         setTimeout(()=>location.reload(), 2000);
-      }catch(e){ alert('Erro: '+e.message); }
-    };
+      }catch(e){ alert('Erro: '+e.message); console.error(e); }
+    }
+
+    document.getElementById('c-btn').onclick=()=>fazerBaixa(true);
+    document.getElementById('c-btn-todas').onclick=()=>fazerBaixa(false);
   }
 
   function renderEstoqueSearch(){
@@ -514,21 +622,21 @@ Error generating stack: `+u.message+`
         const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque'));
         if(!isEstoque) return;
         const main=document.querySelector('main'); if(!main) return;
-        if(document.getElementById('pesquisa-estoque-bar-v24')) return;
+        if(document.getElementById('pesquisa-estoque-bar-v25')) return;
         const ruas=getR();
         const bar=document.createElement('div');
-        bar.id='pesquisa-estoque-bar-v24';
+        bar.id='pesquisa-estoque-bar-v25';
         bar.style.cssText='background:#151518; border:2px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;';
         bar.innerHTML=`
-          <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO - CORRIGIDO - Mostra TODAS as localizações mesmo com IDs diferentes</div><div style="font-size:10px; color:#71717a;">${ruas.length} ruas</div></div>
-          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v24" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v24" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v24" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
-          <div id="estoque-busca-res-v24" style="margin-top:12px;"></div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO - Mostra TODAS as localizações</div><div style="font-size:10px; color:#71717a;">${ruas.length} ruas</div></div>
+          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v25" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v25" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v25" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
+          <div id="estoque-busca-res-v25" style="margin-top:12px;"></div>
         `;
         main.prepend(bar);
-        const inp=document.getElementById('estoque-busca-input-v24');
-        const btn=document.getElementById('estoque-busca-btn-v24');
-        const btnLimpar=document.getElementById('estoque-busca-limpar-v24');
-        const res=document.getElementById('estoque-busca-res-v24');
+        const inp=document.getElementById('estoque-busca-input-v25');
+        const btn=document.getElementById('estoque-busca-btn-v25');
+        const btnLimpar=document.getElementById('estoque-busca-limpar-v25');
+        const res=document.getElementById('estoque-busca-res-v25');
         function buscarNoEstoque(){
           const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
           const m=buscarMultiLocal(cod);
@@ -542,35 +650,29 @@ Error generating stack: `+u.message+`
             <div style="background:#0e0e10; border:2px solid ${isMulti? '#7c3aed' : '#10b981'}; border-radius:12px; padding:12px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
                 <div style="color:${isMulti? '#a78bfa' : '#10b981'}; font-weight:bold; font-size:13px;">
-                  ${isMulti? `⚠️ CÓDIGO EM ${m.numLocalizacoes} LOCALIZAÇÕES FÍSICAS (${m.numRuas} Rua(s)) - Total ${m.totalPos} un + Livre ${m.totalLivre} un = ${totalQtd} un` : `✅ 1 LOCALIZAÇÃO FÍSICA - Total ${totalQtd} un (${m.totalPos} un nas Ruas + ${m.totalLivre} un Livre)`}
+                  ${isMulti? `⚠️ ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S) - Total ${m.totalPos} un + Livre ${m.totalLivre} un = ${totalQtd} un` : `✅ 1 LOCALIZAÇÃO - Total ${totalQtd} un`}
                 </div>
-                <div style="font-size:10px; background:${isMulti? 'rgba(124,58,237,0.15)' : 'rgba(16,185,129,0.15)'}; border:1px solid ${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 8px; color:${isMulti? '#a78bfa' : '#10b981'}; font-weight:bold;">${m.numLocalizacoes} posição(ões) | ${m.numRuas} rua(s) | ${m.ids.length} ID(s) diferentes</div>
+                <div style="font-size:10px; background:${isMulti? 'rgba(124,58,237,0.15)' : 'rgba(16,185,129,0.15)'}; border:1px solid ${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 8px; color:${isMulti? '#a78bfa' : '#10b981'}; font-weight:bold;">${m.numLocalizacoes} pos | ${m.numRuas} rua(s)</div>
               </div>
               <div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:8px; margin-bottom:10px;">
-                <div style="font-size:11px; color:white; font-weight:bold; margin-bottom:6px;">📊 Resumo por Rua (corrigido - mostra TODAS mesmo com IDs diferentes):</div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                   ${Object.entries(m.porRua).map(([rua, dados])=>`<span style="background:#0e0e10; border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">${rua}: ${dados.total} un (${dados.pos.length} pos)</span>`).join('')}
                   ${m.totalLivre>0? `<span style="background:#0e0e10; border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24;">LIVRE: ${m.totalLivre} un</span>` : ''}
                   <span style="background:#7c3aed; color:white; border-radius:9999px; padding:6px 12px; font-size:11px; font-weight:bold;">TOTAL: ${totalQtd} un</span>
                 </div>
-                <div style="margin-top:6px; font-size:9px; color:#71717a;">IDs diferentes para mesmo código: ${m.ids.join(', ')} - Isso causava o bug de mostrar só 1</div>
               </div>
               ${m.pos.map(a=>`
                 <div style="background:#151518; border:1px solid ${isMulti? '#7c3aed' : '#2a2a30'}; border-radius:12px; padding:12px; display:flex; gap:12px; margin-bottom:8px;">
                   <div style="background:${isMulti? '#7c3aed' : '#10b981'}; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:${isMulti? 'white' : 'black'}; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.ni).padStart(2,'0')}</div>
                   <div style="flex:1;">
                     <div style="color:white; font-weight:bold;">${a.codigo} | ID: ${a.materialId}</div>
-                    <div style="color:#a1a1aa; font-size:11px;">${a.desc||''}</div>
                     <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
-                      <span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa;">📍 ${a.ruaNome} N${a.ni} D${a.dv}</span>
-                      <span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#10b981;">Pos ${a.posId}</span>
+                      <span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa;">📍 ${a.ruaNome} N${a.ni} D${a.dv} Pos ${a.posId}</span>
                       <span style="background:${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 10px; font-size:11px; color:${isMulti? 'white' : 'black'}; font-weight:bold;">${a.q} un</span>
                     </div>
-                    <div style="margin-top:6px; font-size:11px; color:#10b981; font-family:monospace;">${a.ruaNome} → N${a.ni} → D${a.dv} → ${a.posId} (${a.q} un) - ID ${a.materialId}</div>
                   </div>
                 </div>
               `).join('')}
-              ${m.livre.length>0? `<div style="background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:10px; padding:8px; margin-top:8px; font-size:11px; color:#fbbf24;">📦 Também no LIVRE: ${m.livre.map(l=>`${l.q} un (ID ${l.id})`).join(', ')} - Total Livre: ${m.totalLivre} un</div>` : ''}
             </div>
           `;
         }
@@ -586,13 +688,13 @@ Error generating stack: `+u.message+`
       for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ if((d.textContent||'').includes('Livre')){ bar=d; break; } } }
       if(!bar){ const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent && x.textContent.includes('Livre')); if(b) bar=b.parentElement; }
       if(!bar) return false;
-      if(bar.querySelector('#btn-v24-consumo')) return true;
+      if(bar.querySelector('#btn-v25-consumo')) return true;
       const btnConsumo=document.createElement('button');
-      btnConsumo.id='btn-v24-consumo'; btnConsumo.textContent=`📦 Consumo V24 • ${getC().length}`;
+      btnConsumo.id='btn-v25-consumo'; btnConsumo.textContent=`📦 Consumo V25 • ${getC().length}`;
       btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;';
       btnConsumo.onclick=openConsumo;
       const btnLivre=document.createElement('button');
-      btnLivre.id='btn-v24-livre'; btnLivre.textContent='➕ Código Livre';
+      btnLivre.id='btn-v25-livre'; btnLivre.textContent='➕ Código Livre';
       btnLivre.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #fbbf24; background:#fbbf24; color:black; font-weight:bold;';
       btnLivre.onclick=()=>{ renderLivreModal(); };
       bar.appendChild(btnConsumo);
