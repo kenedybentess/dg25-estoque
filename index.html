@@ -69,6 +69,7 @@ Error generating stack: `+u.message+`
 <div id="edit-estoque-root" style="display:none; position:fixed; inset:0; z-index:1000000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; overflow:auto; padding:16px;"></div>
 <script>
 (function(){
+  console.log('WMS v20 FINAL - Consumo + Rua N D');
   const KP="wms_final_posicoes",KC="wms_final_consumos",KR="wms_final_ruas";
   const FB="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
   function getP(){try{return JSON.parse(localStorage.getItem(KP)||"[]")}catch{return []}}
@@ -82,6 +83,7 @@ Error generating stack: `+u.message+`
   setInterval(async()=>{try{await fetchC();await fetchP()}catch{}},8000);
   window.addEventListener('focus',async()=>{try{await fetchC();await fetchP()}catch{}});
 
+  // EDITAR POSICAO
   window.abrirEditarPosicao = function(posIdOriginal){
     const pos=getP(); const ruas=getR();
     const pIndex=pos.findIndex(p=>p.posId===posIdOriginal);
@@ -116,7 +118,7 @@ Error generating stack: `+u.message+`
             </div>
           </div>
           <div>
-            <label style="color:#a78bfa; font-size:11px; font-weight:bold;">DIVISAO (D) *</label>
+            <label style="color:#a78bfa; font-size:11px; font-weight:bold;">DESTINO (D) *</label>
             <div style="display:flex; gap:6px; margin-top:6px;">
               <button id="edit-d-menos" style="width:44px; height:44px; background:#232326; color:white; border:1px solid #3a3a40; border-radius:10px; font-weight:bold; cursor:pointer;">-</button>
               <input id="edit-d" type="number" min="1" max="20" value="${p.div}" style="flex:1; height:44px; background:#0e0e10; border:1px solid #a78bfa; color:white; border-radius:10px; text-align:center; font-weight:bold;">
@@ -125,7 +127,7 @@ Error generating stack: `+u.message+`
           </div>
         </div>
         <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:10px; padding:10px;">
-          <div style="color:#71717a; font-size:10px;">NOVO ID SERA:</div>
+          <div style="color:#71717a; font-size:10px;">NOVO ID:</div>
           <div id="edit-preview" style="color:#10b981; font-weight:bold; font-family:monospace; font-size:14px; margin-top:4px;">${p.ruaIndex}-${p.nivel}-${p.div}</div>
         </div>
         <button id="edit-salvar" style="width:100%; height:48px; background:#10b981; color:black; font-weight:bold; border-radius:9999px; border:none; cursor:pointer; font-size:14px;">SALVAR RUA + N + D</button>
@@ -133,12 +135,7 @@ Error generating stack: `+u.message+`
     </div>`;
     document.getElementById('edit-fechar').onclick=()=>{ modal.style.display='none'; };
     modal.onclick=(e)=>{ if(e.target===modal) modal.style.display='none'; };
-    function updatePreview(){
-      const ruaIdx=Number(document.getElementById('edit-rua').value)||0;
-      const n=Number(document.getElementById('edit-n').value)||1;
-      const d=Number(document.getElementById('edit-d').value)||1;
-      document.getElementById('edit-preview').textContent=`${ruaIdx}-${n}-${d}`;
-    }
+    function updatePreview(){ const ruaIdx=Number(document.getElementById('edit-rua').value)||0; const n=Number(document.getElementById('edit-n').value)||1; const d=Number(document.getElementById('edit-d').value)||1; document.getElementById('edit-preview').textContent=`${ruaIdx}-${n}-${d}`; }
     document.getElementById('edit-rua').addEventListener('change', updatePreview);
     document.getElementById('edit-n').addEventListener('input', updatePreview);
     document.getElementById('edit-d').addEventListener('input', updatePreview);
@@ -151,22 +148,11 @@ Error generating stack: `+u.message+`
         const novaRuaIdx=Number(document.getElementById('edit-rua').value);
         const novoN=Number(document.getElementById('edit-n').value);
         const novoD=Number(document.getElementById('edit-d').value);
-        let pos=getP();
-        const idx=pos.findIndex(pp=>pp.posId===posIdOriginal);
-        const antigo=pos[idx];
+        let pos=getP(); const idx=pos.findIndex(pp=>pp.posId===posIdOriginal); const antigo=pos[idx];
         const novoPosId=`${novaRuaIdx}-${novoN}-${novoD}`;
         const existe=pos.find(pp=>pp.posId===novoPosId && pp.posId!==posIdOriginal);
-        if(existe){
-          if(!confirm(`Ja existe ${novoPosId}. Mesclar?`)) return;
-          for(const it of (antigo.itens||[])){
-            const ja=existe.itens.find(i=>String(i.codigo||'').toLowerCase()===String(it.codigo||'').toLowerCase());
-            if(ja) ja.qtd=(Number(ja.qtd)||0)+(Number(it.qtd)||0);
-            else existe.itens.push(it);
-          }
-          pos.splice(idx,1);
-        } else {
-          antigo.ruaIndex=novaRuaIdx; antigo.nivel=novoN; antigo.div=novoD; antigo.posId=novoPosId;
-        }
+        if(existe){ if(!confirm(`Ja existe ${novoPosId}. Mesclar?`)) return; for(const it of (antigo.itens||[])){ const ja=existe.itens.find(i=>String(i.codigo||'').toLowerCase()===String(it.codigo||'').toLowerCase()); if(ja) ja.qtd=(Number(ja.qtd)||0)+(Number(it.qtd)||0); else existe.itens.push(it); } pos.splice(idx,1); }
+        else { antigo.ruaIndex=novaRuaIdx; antigo.nivel=novoN; antigo.div=novoD; antigo.posId=novoPosId; }
         localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
         alert(`EDITADO! ${posIdOriginal} -> ${novoPosId}`); modal.style.display='none'; location.reload();
       }catch(e){ alert('Erro: '+e.message); }
@@ -176,35 +162,20 @@ Error generating stack: `+u.message+`
 
   window.ajustarND = function(posId,tipo,delta){
     try{
-      let pos=getP();
-      const idx=pos.findIndex(p=>p.posId===posId);
-      if(idx===-1){ alert('Pos nao encontrada'); return; }
+      let pos=getP(); const idx=pos.findIndex(p=>p.posId===posId); if(idx===-1){ alert('Pos nao encontrada'); return; }
       const p=pos[idx];
-      if(tipo==='nivel') p.nivel=Math.max(1,(Number(p.nivel)||1)+delta);
-      else p.div=Math.max(1,(Number(p.div)||1)+delta);
+      if(tipo==='nivel') p.nivel=Math.max(1,(Number(p.nivel)||1)+delta); else p.div=Math.max(1,(Number(p.div)||1)+delta);
       const novoPosId=`${p.ruaIndex}-${p.nivel}-${p.div}`;
       const conflito=pos.find(pp=>pp.posId===novoPosId && pp.posId!==posId);
-      if(conflito){
-        if(!confirm(`Ja existe ${novoPosId}. Mesclar?`)) return;
-        for(const it of (p.itens||[])){
-          const ja=conflito.itens.find(i=>String(i.codigo||'').toLowerCase()===String(it.codigo||'').toLowerCase());
-          if(ja) ja.qtd=(Number(ja.qtd)||0)+(Number(it.qtd)||0);
-          else conflito.itens.push(it);
-        }
-        pos.splice(idx,1);
-      } else {
-        p.posId=novoPosId;
-      }
-      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
-      alert(`${tipo} ajustado -> ${novoPosId}`); location.reload();
+      if(conflito){ if(!confirm(`Ja existe ${novoPosId}. Mesclar?`)) return; for(const it of (p.itens||[])){ const ja=conflito.itens.find(i=>String(i.codigo||'').toLowerCase()===String(it.codigo||'').toLowerCase()); if(ja) ja.qtd=(Number(ja.qtd)||0)+(Number(it.qtd)||0); else conflito.itens.push(it); } pos.splice(idx,1); } else { p.posId=novoPosId; }
+      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos); alert(`${tipo} ajustado -> ${novoPosId}`); location.reload();
     }catch(e){ alert('Erro: '+e.message); }
   };
 
-  // NOVA FUNCAO: CLICAR NA RUA 12 E EDITAR N e D
   window.abrirGerenciadorRua = function(ruaIndex){
     const pos=getP(); const ruas=getR();
     const ruaNome=ruas[ruaIndex]?.nome||`Rua ${ruaIndex}`;
-    const posicoesDaRua=pos.filter(p=>p.ruaIndex===ruaIndex).sort((a,b)=>(a.nivel-b.nivel)||(a.div-b.div);
+    const posicoesDaRua=pos.filter(p=>p.ruaIndex===ruaIndex).sort((a,b)=>(a.nivel-b.nivel)||(a.div-b.div));
     const modal=document.getElementById('edit-estoque-root');
     modal.style.display='flex';
     modal.innerHTML=`<div style="background:#151518; border:2px solid #fbbf24; border-radius:20px; padding:20px; width:98%; max-width:800px; max-height:90vh; overflow:auto;">
@@ -212,7 +183,7 @@ Error generating stack: `+u.message+`
         <div style="color:white; font-weight:bold; font-size:16px;">📍 ${ruaNome} - Gerenciar Nível e Destino</div>
         <button id="edit-fechar" style="width:32px; height:32px; border-radius:50%; background:#232326; color:white; border:none; cursor:pointer;">X</button>
       </div>
-      <div style="background:#0e0e10; border-radius:12px; padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+      <div style="background:#0e0e10; border-radius:12px; padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div><div style="color:#71717a; font-size:10px;">RUA SELECIONADA</div><div style="color:#fbbf24; font-weight:bold; font-size:14px;">${ruaNome} (índice ${ruaIndex}) - ${posicoesDaRua.length} posições</div></div>
         <div style="display:flex; gap:6px;">
           <button onclick="window.adicionarNivelRua(${ruaIndex})" style="height:32px; padding:0 12px; background:#10b981; color:black; border-radius:8px; border:none; font-weight:bold; cursor:pointer; font-size:11px;">+ Adicionar Nível</button>
@@ -241,10 +212,6 @@ Error generating stack: `+u.message+`
                   <span style="color:white; font-weight:bold; font-size:12px; min-width:20px; text-align:center;">${p.div}</span>
                   <button onclick="window.ajustarND('${p.posId}','div',1)" style="width:28px; height:28px; background:#a78bfa; color:white; border-radius:6px; border:none; cursor:pointer; font-weight:bold;">+</button>
                 </div>
-                <div style="display:flex; align-items:center; gap:4px; background:#151518; border-radius:8px; padding:4px 8px;">
-                  <span style="color:#fbbf24; font-size:10px; font-weight:bold;">QTD:</span>
-                  <span style="color:white; font-size:11px;">${(p.itens||[]).reduce((s,it)=>s+(Number(it.qtd)||0),0)} un</span>
-                </div>
               </div>
             </div>
             <div style="display:flex; flex-direction:column; gap:6px;">
@@ -261,37 +228,14 @@ Error generating stack: `+u.message+`
   };
 
   window.adicionarNivelRua = function(ruaIndex){
-    try{
-      let pos=getP();
-      const posDaRua=pos.filter(p=>p.ruaIndex===ruaIndex);
-      const maxNivel=Math.max(0,...posDaRua.map(p=>p.nivel||0));
-      const novoNivel=maxNivel+1;
-      const novaPos={posId:`${ruaIndex}-${novoNivel}-1`, ruaIndex, nivel:novoNivel, div:1, itens:[]};
-      pos.push(novaPos);
-      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
-      alert(`✅ Nível ${novoNivel} adicionado na Rua ${ruaIndex}`); window.abrirGerenciadorRua(ruaIndex);
-    }catch(e){ alert('Erro: '+e.message); }
+    try{ let pos=getP(); const posDaRua=pos.filter(p=>p.ruaIndex===ruaIndex); const maxNivel=Math.max(0,...posDaRua.map(p=>p.nivel||0)); const novoNivel=maxNivel+1; const novaPos={posId:`${ruaIndex}-${novoNivel}-1`, ruaIndex, nivel:novoNivel, div:1, itens:[]}; pos.push(novaPos); localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos); alert(`✅ Nível ${novoNivel} adicionado na Rua ${ruaIndex}`); window.abrirGerenciadorRua(ruaIndex); }catch(e){ alert('Erro: '+e.message); }
   };
   window.adicionarDestinoRua = function(ruaIndex){
-    try{
-      let pos=getP();
-      const posDaRua=pos.filter(p=>p.ruaIndex===ruaIndex);
-      const maxDiv=Math.max(0,...posDaRua.map(p=>p.div||0));
-      const novoDiv=maxDiv+1;
-      const novoNivel=posDaRua.length>0?posDaRua[0].nivel:1;
-      const novaPos={posId:`${ruaIndex}-${novoNivel}-${novoDiv}`, ruaIndex, nivel:novoNivel, div:novoDiv, itens:[]};
-      pos.push(novaPos);
-      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
-      alert(`✅ Destino ${novoDiv} adicionado na Rua ${ruaIndex}`); window.abrirGerenciadorRua(ruaIndex);
-    }catch(e){ alert('Erro: '+e.message); }
+    try{ let pos=getP(); const posDaRua=pos.filter(p=>p.ruaIndex===ruaIndex); const maxDiv=Math.max(0,...posDaRua.map(p=>p.div||0)); const novoDiv=maxDiv+1; const novoNivel=posDaRua.length>0?posDaRua[0].nivel:1; const novaPos={posId:`${ruaIndex}-${novoNivel}-${novoDiv}`, ruaIndex, nivel:novoNivel, div:novoDiv, itens:[]}; pos.push(novaPos); localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos); alert(`✅ Destino ${novoDiv} adicionado na Rua ${ruaIndex}`); window.abrirGerenciadorRua(ruaIndex); }catch(e){ alert('Erro: '+e.message); }
   };
   window.removerPosicao = function(posId){
     if(!confirm(`Remover posição ${posId}? Itens serão perdidos!`)) return;
-    let pos=getP(); const idx=pos.findIndex(p=>p.posId===posId); if(idx===-1) return;
-    const ruaIdx=pos[idx].ruaIndex;
-    pos.splice(idx,1);
-    localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
-    alert(`Posição ${posId} removida`); window.abrirGerenciadorRua(ruaIdx);
+    let pos=getP(); const idx=pos.findIndex(p=>p.posId===posId); if(idx===-1) return; const ruaIdx=pos[idx].ruaIndex; pos.splice(idx,1); localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos); alert(`Posição ${posId} removida`); window.abrirGerenciadorRua(ruaIdx);
   };
 
   function renderConsumo(){
@@ -414,7 +358,7 @@ Error generating stack: `+u.message+`
         const reg={id:Date.now(),materialId:sel.achados[0]?.item?.materialId||sel.codigo,sku:sel.codigo,codigo:sel.codigo,nome:sel.nome,qtd:q,ordem,tipo,obs,op:ordem,data:new Date().toLocaleString('pt-BR'),log:logs.join('\n'),locais:selecionados.map(s=>`${s.ruaNome} ${s.posId}`).join(', ')};
         const allC=getC(); allC.push(reg); localStorage.setItem(KC,JSON.stringify(allC)); syncC(allC);
         const msg=document.getElementById('c-msg');
-        msg.innerHTML=`<div style="color:#10b981;font-weight:bold;font-size:14px;">✅ BAIXA COM OP REALIZADA - ESTOQUE ATUALIZADO EM TODOS DISPOSITIVOS</div><div style="margin-top:8px;"><span style="background:#fbbf24;color:black;font-weight:bold;border-radius:9999px;padding:4px 10px;font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px;color:#a1a1aa;margin-top:8px;">${logs.join('<br>')}</div>`;
+        msg.innerHTML=`<div style="color:#10b981;font-weight:bold;font-size:14px;">✅ BAIXA COM OP REALIZADA</div><div style="margin-top:8px;"><span style="background:#fbbf24;color:black;font-weight:bold;border-radius:9999px;padding:4px 10px;font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px;color:#a1a1aa;margin-top:8px;">${logs.join('<br>')}</div>`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.border='1px solid #10b981';
         renderHist(document.getElementById('c-hist-filter').value||'');
         limpar();
