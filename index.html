@@ -54,7 +54,7 @@ Error generating stack: `+u.message+`
     let nomeDesc='';
     for(const p of pos){
       for(const it of (p.itens||[])){
-        if(String(it.codigo||'').toLowerCase()===cod || String(it.codigo||'').toLowerCase().includes(cod) || String(it.descricao||'').toLowerCase().includes(cod)){
+        if(String(it.codigo||'').toLowerCase().includes(cod) || String(it.descricao||'').toLowerCase().includes(cod)){
           const ruaNome=ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
           achadosPos.push({
             posId:p.posId,
@@ -77,10 +77,10 @@ Error generating stack: `+u.message+`
     let achadosLivre=[];
     let totalLivre=0;
     for(const m of livre){
-      if(String(m.codigo||'').toLowerCase()===cod || String(m.sku||'').toLowerCase()===cod || String(m.codigo||'').toLowerCase().includes(cod) || String(m.descricao||'').toLowerCase().includes(cod) || String(m.nome||'').toLowerCase().includes(cod)){
+      if(String(m.codigo||'').toLowerCase().includes(cod) || String(m.sku||'').toLowerCase().includes(cod) || String(m.descricao||'').toLowerCase().includes(cod)){
         let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
         if(s>0){
-          achadosLivre.push({codigo:m.codigo||m.sku, desc:m.descricao||m.nome||'', q:s, id:m.id, uniqueKey:`LIVRE-${m.id}`, local:m.local||'LIVRE', unidade:m.unidade||'UN', valor:m.valor||0});
+          achadosLivre.push({codigo:m.codigo||m.sku, desc:m.descricao||m.nome||'', q:s, id:m.id, uniqueKey:`LIVRE-${m.id}`, local:m.local||'LIVRE', unidade:m.unidade||'UN'});
           totalLivre+=s;
           idsEncontrados.add(String(m.id));
           if(!nomeDesc) nomeDesc=m.descricao||m.nome||m.codigo;
@@ -93,7 +93,6 @@ Error generating stack: `+u.message+`
     achadosPos.forEach(a=>{ if(!porRua[a.ruaNome]) porRua[a.ruaNome]={total:0, pos:[]}; porRua[a.ruaNome].total+=a.q; porRua[a.ruaNome].pos.push(a); });
     return {
       codigo: codigoBusca.trim(),
-      codigoLower: cod,
       nome: nomeDesc || codigoBusca.trim(),
       pos: achadosPos,
       livre: achadosLivre,
@@ -116,7 +115,7 @@ Error generating stack: `+u.message+`
       const livre=getL(); const pos=getP(); const mapa=new Map();
       for(const m of livre){
         let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
-        mapa.set(String(m.id), {id:m.id, codigo:m.codigo||m.sku||'', sku:m.sku||m.codigo||'', nome:m.nome||m.descricao||'', total:s, livre:s, aloc:0, pos:[], lc:(m.codigo||m.sku||'').toLowerCase(), ln:(m.nome||m.descricao||'').toLowerCase()});
+        mapa.set(String(m.id), {id:m.id, codigo:m.codigo||m.sku||'', sku:m.sku||m.codigo||'', nome:m.nome||m.descricao||'', total:s, livre:s, aloc:0, pos:[], lc:(m.codigo||m.sku||'').toLowerCase()});
       }
       for(const p of pos){
         for(const it of (p.itens||[])){
@@ -124,7 +123,7 @@ Error generating stack: `+u.message+`
           if(mapa.has(id)){
             const e=mapa.get(id); e.aloc+=q; e.total=e.livre+e.aloc; e.pos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q});
           } else {
-            mapa.set(id, {id:it.materialId, codigo:it.codigo||'', sku:it.codigo||'', nome:it.descricao||'', total:q, livre:0, aloc:q, pos:[{posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q}], lc:(it.codigo||'').toLowerCase(), ln:(it.descricao||'').toLowerCase()});
+            mapa.set(id, {id:it.materialId, codigo:it.codigo||'', sku:it.codigo||'', nome:it.descricao||'', total:q, livre:0, aloc:q, pos:[{posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q}], lc:(it.codigo||'').toLowerCase()});
           }
         }
       }
@@ -196,137 +195,137 @@ Error generating stack: `+u.message+`
     setTimeout(()=>inpCod.focus(), 200);
   }
 
-  // ===== PESQUISA NA ABA LIVRE =====
+  // LIVRE SEARCH - V27 FIX - usa main.prepend igual Estoque, checa a cada 1s
   function renderLivreSearch(){
-    const interval=setInterval(()=>{
-      try{
-        const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
-        if(!isLivre) return;
-        const main=document.querySelector('main'); if(!main) return;
-        if(document.getElementById('pesquisa-livre-bar-v26')) return;
-
-        // Procura container do Livre que tem a busca original
-        let targetDiv=null;
-        const divs=Array.from(main.querySelectorAll('div'));
-        for(const d of divs){
-          if(d.className && typeof d.className==='string' && d.className.includes('bg-[#151518]') && d.className.includes('border') && d.className.includes('rounded-2xl') && (d.textContent||'').includes('Buscar por código')){
-            targetDiv=d;
-            break;
-          }
-        }
-        if(!targetDiv){
-          targetDiv=main.querySelector('div.bg-\[\#151518\].rounded-2xl');
-        }
-        if(!targetDiv) return;
-
-        const bar=document.createElement('div');
-        bar.id='pesquisa-livre-bar-v26';
-        bar.style.cssText='background:#0e0e10; border:2px solid #fbbf24; border-radius:16px; padding:14px; margin-bottom:14px;';
-        bar.innerHTML=`
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <div style="color:#fbbf24; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO QUE ESTÁ NO LIVRE (com localização)</div>
-            <div style="font-size:10px; color:#71717a; border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px;">${getL().length} materiais no Livre</div>
+    try{
+      const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
+      if(!isLivre){
+        // Se não está em Livre, remove a barra se existir
+        const existing=document.getElementById('pesquisa-livre-bar-v27');
+        if(existing) existing.style.display='none';
+        return;
+      }
+      const main=document.querySelector('main'); if(!main) return;
+      let bar=document.getElementById('pesquisa-livre-bar-v27');
+      if(bar){
+        bar.style.display='block';
+        return;
+      }
+      const ruas=getR();
+      bar=document.createElement('div');
+      bar.id='pesquisa-livre-bar-v27';
+      bar.style.cssText='background:#151518; border:3px solid #fbbf24; border-radius:16px; padding:16px; margin-bottom:16px; box-shadow:0 0 20px rgba(251,191,36,0.2);';
+      bar.innerHTML=`
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; width:32px; height:32px; display:flex; align-items:center; justify-content:center;">🔍</div>
+            <div>
+              <div style="color:#fbbf24; font-weight:bold; font-size:14px;">PESQUISAR CÓDIGO QUE ESTÁ NO LIVRE - V27 (AGORA APARECE)</div>
+              <div style="color:#71717a; font-size:10px;">Busca no Livre e nas Ruas - Mostra onde está</div>
+            </div>
           </div>
-          <div style="display:flex; gap:8px;">
-            <input id="livre-busca-input-v26" style="flex:1; height:44px; background:#151518; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="Digite código que está no LIVRE + ENTER (ex: AUT100190001970)">
-            <button id="livre-busca-btn-v26" style="height:44px; padding:0 18px; border-radius:12px; background:#fbbf24; color:black; font-weight:bold;">BUSCAR NO LIVRE</button>
-            <button id="livre-busca-limpar-v26" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white; border:1px solid #2a2a30;">Limpar</button>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span style="font-size:10px; color:#71717a; border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getL().length} no Livre</span>
+            <span style="font-size:10px; color:#71717a; border:1px solid #232326; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getR().length} ruas</span>
           </div>
-          <div id="livre-busca-res-v26" style="margin-top:12px;"></div>
-        `;
-        targetDiv.parentNode.insertBefore(bar, targetDiv);
+        </div>
+        <div style="display:flex; gap:8px;">
+          <input id="livre-busca-input-v27" style="flex:1; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="Digite código que está no LIVRE + ENTER (ex: AUT100190001970)">
+          <button id="livre-busca-btn-v27" style="height:48px; padding:0 20px; border-radius:12px; background:#fbbf24; color:black; font-weight:bold; font-size:13px;">🔍 BUSCAR NO LIVRE</button>
+          <button id="livre-busca-limpar-v27" style="height:48px; padding:0 14px; border-radius:12px; background:#232326; color:white; border:1px solid #2a2a30;">Limpar</button>
+        </div>
+        <div id="livre-busca-res-v27" style="margin-top:14px;"></div>
+      `;
+      main.prepend(bar);
 
-        const inp=document.getElementById('livre-busca-input-v26');
-        const btn=document.getElementById('livre-busca-btn-v26');
-        const btnLimpar=document.getElementById('livre-busca-limpar-v26');
-        const res=document.getElementById('livre-busca-res-v26');
+      const inp=document.getElementById('livre-busca-input-v27');
+      const btn=document.getElementById('livre-busca-btn-v27');
+      const btnLimpar=document.getElementById('livre-busca-limpar-v27');
+      const res=document.getElementById('livre-busca-res-v27');
 
-        function buscarNoLivre(){
-          const cod=(inp.value||'').trim().toLowerCase();
-          if(!cod){ res.innerHTML=''; return; }
-          const m=buscarMultiLocal(cod);
-          if(!m){
-            res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:10px; border-radius:10px;">❌ Código <b>${cod}</b> não encontrado no LIVRE nem nas Ruas. Verifique se digitou correto. Total no Livre: ${getL().length}</div>`;
-            return;
-          }
+      function buscarNoLivre(){
+        const cod=(inp.value||'').trim().toLowerCase();
+        if(!cod){ res.innerHTML=''; return; }
+        const m=buscarMultiLocal(cod);
+        if(!m){
+          res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:10px; font-size:12px;">❌ Código <b>${cod}</b> não encontrado em lugar nenhum (nem no Livre nem nas Ruas). Total no Livre: ${getL().length} materiais | Dica: Adicione pelo botão ➕ Código Livre no topo.</div>`;
+          return;
+        }
 
-          const temLivre=m.livre.length>0;
-          const temRua=m.pos.length>0;
+        const temLivre=m.livre.length>0;
+        const temRua=m.pos.length>0;
 
-          res.innerHTML=`
-            <div style="background:#151518; border:2px solid ${temLivre? '#fbbf24' : '#10b981'}; border-radius:12px; padding:12px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
-                <div style="color:${temLivre? '#fbbf24' : '#a78bfa'}; font-weight:bold; font-size:13px;">
-                  ${temLivre && temRua ? `📦 CÓDIGO ESTÁ NO LIVRE (${m.totalLivre} un) E EM ${m.numLocalizacoes} RUA(S) (${m.totalPos} un) - Total ${m.total} un` :
-                    temLivre ? `✅ CÓDIGO ESTÁ NO LIVRE - ${m.totalLivre} un no Livre | Total geral ${m.total} un` :
-                    `📍 CÓDIGO SÓ ESTÁ NAS RUAS - ${m.numLocalizacoes} localização(ões) - Total ${m.total} un (não tem no Livre)`}
-                </div>
-                <div style="font-size:10px; background:${temLivre? 'rgba(251,191,36,0.15)' : 'rgba(124,58,237,0.15)'}; border:1px solid ${temLivre? '#fbbf24' : '#7c3aed'}; border-radius:9999px; padding:4px 8px; color:${temLivre? '#fbbf24' : '#a78bfa'}; font-weight:bold;">
-                  ${m.numLocalizacoes} pos nas Ruas | ${m.livre.length} no Livre | ${m.ids.length} ID(s)
-                </div>
+        res.innerHTML=`
+          <div style="background:#0e0e10; border:2px solid ${temLivre? '#fbbf24' : '#7c3aed'}; border-radius:12px; padding:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+              <div style="color:${temLivre? '#fbbf24' : '#a78bfa'}; font-weight:bold; font-size:14px;">
+                ${temLivre && temRua ? `📦 CÓDIGO ESTÁ NO LIVRE (${m.totalLivre} un) E EM ${m.numLocalizacoes} RUA(S) (${m.totalPos} un) - TOTAL ${m.total} un` :
+                  temLivre ? `✅ ESTÁ NO LIVRE - ${m.totalLivre} un no Livre | Total geral ${m.total} un` :
+                  `📍 SÓ NAS RUAS - ${m.numLocalizacoes} posição(ões) - Total ${m.total} un (não tem no Livre)`}
               </div>
-
-              ${temLivre? `
-                <div style="background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:10px; padding:10px; margin-bottom:10px;">
-                  <div style="color:#fbbf24; font-weight:bold; font-size:12px; margin-bottom:8px;">📦 NO LIVRE - ${m.totalLivre} un (clique em ALOCAR para levar para Rua):</div>
-                  <div style="display:grid; gap:8px;">
-                    ${m.livre.map(l=>`
-                      <div style="background:#0e0e10; border:1px solid #fbbf24; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
-                        <div style="display:flex; gap:10px; align-items:center;">
-                          <div style="background:#fbbf24; border-radius:8px; width:44px; height:44px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:10px;">LIVRE<br>${l.q} un</div>
-                          <div>
-                            <div style="color:white; font-weight:bold; font-size:13px;">${l.codigo}</div>
-                            <div style="color:#a1a1aa; font-size:11px;">${l.desc||''}</div>
-                            <div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">
-                              <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#fbbf24;">📦 Livre: ${l.q} ${l.unidade}</span>
-                              <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#71717a;">ID: ${l.id}</span>
-                              <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#71717a;">${l.local||'LIVRE'}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div style="display:flex; flex-direction:column; gap:6px; align-items:end;">
-                          <div style="background:#fbbf24; color:black; border-radius:9999px; padding:6px 12px; font-size:12px; font-weight:bold;">${l.q} un</div>
-                          <div style="font-size:9px; color:#71717a;">No Livre</div>
-                        </div>
-                      </div>
-                    `).join('')}
-                  </div>
-                  <div style="margin-top:8px; font-size:10px; color:#71717a;">💡 Este código está disponível no LIVRE. Vá em <b>Estoque</b> para alocar em uma Rua, ou use o botão ALOCAR nos cards abaixo (na lista original do Livre).</div>
-                </div>
-              ` : `<div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:10px; padding:8px; margin-bottom:10px; font-size:11px; color:#fca5a5;">⚠️ Este código NÃO está no LIVRE, só nas Ruas abaixo. Se quiser devolver para o Livre, use Estornar no Consumo ou remova da posição no Estoque.</div>`}
-
-              ${temRua? `
-                <div style="background:#0e0e10; border:1px solid #7c3aed; border-radius:10px; padding:10px;">
-                  <div style="color:#a78bfa; font-weight:bold; font-size:12px; margin-bottom:8px;">📍 NAS RUAS - ${m.totalPos} un em ${m.numLocalizacoes} posição(ões) em ${m.numRuas} Rua(s):</div>
-                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                    ${Object.entries(m.porRua).map(([rua, dados])=>`<span style="background:#151518; border:1px solid #7c3aed; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa; font-weight:bold;">${rua}: ${dados.total} un (${dados.pos.length} pos)</span>`).join('')}
-                  </div>
-                  ${m.pos.map(p=>`
-                    <div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; gap:10px; margin-bottom:6px; align-items:center;">
-                      <div style="background:#7c3aed; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div>
-                      <div style="flex:1;">
-                        <div style="color:white; font-weight:bold; font-size:12px;">${p.codigo} - ${p.q} un em ${p.ruaNome}</div>
-                        <div style="font-size:10px; color:#71717a;">${p.ruaNome} → N${p.ni} → D${p.dv} → Pos ${p.posId} | ID ${p.materialId}</div>
-                      </div>
-                      <div style="background:#7c3aed; border-radius:9999px; padding:4px 10px; color:white; font-size:11px; font-weight:bold;">${p.q} un</div>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-
-              <div style="margin-top:10px; padding:8px; background:#000; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <div style="font-size:11px; color:#71717a;">Total geral: <b style="color:white;">${m.total} un</b> | Livre: <b style="color:#fbbf24;">${m.totalLivre} un</b> | Ruas: <b style="color:#a78bfa;">${m.totalPos} un</b> | IDs: ${m.ids.length}</div>
-                <div style="font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:9999px; padding:4px 8px;">${temLivre && temRua? 'Multi-local: Livre + Ruas' : temLivre? 'Só no Livre' : 'Só nas Ruas'}</div>
+              <div style="font-size:10px; background:${temLivre? 'rgba(251,191,36,0.15)' : 'rgba(124,58,237,0.15)'}; border:1px solid ${temLivre? '#fbbf24' : '#7c3aed'}; border-radius:9999px; padding:5px 10px; color:${temLivre? '#fbbf24' : '#a78bfa'}; font-weight:bold;">
+                ${m.numLocalizacoes} pos Ruas | ${m.livre.length} no Livre | Total ${m.total} un
               </div>
             </div>
-          `;
-        }
 
-        btn.onclick=buscarNoLivre;
-        inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoLivre(); } });
-        btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
-      }catch(e){ console.error('livre search erro', e); }
-    }, 1000);
+            ${temLivre? `
+              <div style="background:rgba(251,191,36,0.1); border:2px solid #fbbf24; border-radius:12px; padding:12px; margin-bottom:12px;">
+                <div style="color:#fbbf24; font-weight:bold; font-size:13px; margin-bottom:10px;">📦 NO LIVRE - ${m.totalLivre} un disponível para alocar:</div>
+                ${m.livre.map(l=>`
+                  <div style="background:#0e0e10; border:1px solid #fbbf24; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="display:flex; gap:12px; align-items:center;">
+                      <div style="background:#fbbf24; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:10px; text-align:center;">LIVRE<br>${l.q} un</div>
+                      <div>
+                        <div style="color:white; font-weight:bold; font-size:14px;">${l.codigo}</div>
+                        <div style="color:#a1a1aa; font-size:12px;">${l.desc||''}</div>
+                        <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                          <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#fbbf24; font-weight:bold;">📦 Livre: ${l.q} ${l.unidade}</span>
+                          <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:10px; color:#71717a;">ID: ${l.id.substring(0,20)}...</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="text-align:center;">
+                      <div style="background:#fbbf24; color:black; border-radius:9999px; padding:8px 14px; font-size:14px; font-weight:bold;">${l.q} un</div>
+                      <div style="font-size:10px; color:#fbbf24; margin-top:4px; font-weight:bold;">No Livre</div>
+                    </div>
+                  </div>
+                `).join('')}
+                <div style="margin-top:8px; font-size:11px; color:#a1a1aa; background:#000; border-radius:8px; padding:8px;">💡 Este código está no <b style="color:#fbbf24;">LIVRE</b>. Para alocar em Rua: vá em <b>Estoque</b> → clique em uma posição vazia → selecione este código. Ou clique no botão ALOCAR no card original abaixo desta pesquisa.</div>
+              </div>
+            ` : `<div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:10px; padding:10px; margin-bottom:12px; font-size:12px; color:#fca5a5;">⚠️ Este código NÃO está no LIVRE, só nas Ruas. Para devolver ao Livre, remova da posição no Estoque (vira Livre automaticamente).</div>`}
+
+            ${temRua? `
+              <div style="background:#0e0e10; border:1px solid #7c3aed; border-radius:10px; padding:12px;">
+                <div style="color:#a78bfa; font-weight:bold; font-size:12px; margin-bottom:10px;">📍 TAMBÉM NAS RUAS - ${m.totalPos} un em ${m.numLocalizacoes} posição(ões) em ${m.numRuas} Rua(s):</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                  ${Object.entries(m.porRua).map(([rua, dados])=>`<span style="background:#151518; border:1px solid #7c3aed; border-radius:9999px; padding:5px 10px; font-size:11px; color:#a78bfa; font-weight:bold;">${rua}: ${dados.total} un (${dados.pos.length} pos)</span>`).join('')}
+                  <span style="background:#7c3aed; color:white; border-radius:9999px; padding:5px 10px; font-size:11px; font-weight:bold;">TOTAL RUAS: ${m.totalPos} un</span>
+                </div>
+                ${m.pos.map(p=>`
+                  <div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; gap:10px; margin-bottom:6px; align-items:center;">
+                    <div style="background:#7c3aed; border-radius:8px; width:42px; height:42px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div>
+                    <div style="flex:1;">
+                      <div style="color:white; font-weight:bold; font-size:12px;">${p.codigo} - ${p.q} un em ${p.ruaNome}</div>
+                      <div style="font-size:10px; color:#71717a; font-family:monospace;">${p.ruaNome} → N${p.ni} → D${p.dv} → Pos ${p.posId} | ID ${p.materialId.substring(0,15)}...</div>
+                    </div>
+                    <div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; color:white; font-size:12px; font-weight:bold;">${p.q} un</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            <div style="margin-top:12px; padding:10px; background:#000; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div style="font-size:12px; color:#71717a;">Total geral: <b style="color:white; font-size:14px;">${m.total} un</b> | Livre: <b style="color:#fbbf24;">${m.totalLivre} un</b> | Ruas: <b style="color:#a78bfa;">${m.totalPos} un</b></div>
+              <div style="font-size:11px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:9999px; padding:5px 10px; font-weight:bold;">${temLivre && temRua? 'Livre + Ruas' : temLivre? 'Só no Livre - pronto para alocar' : 'Só nas Ruas'}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      btn.onclick=buscarNoLivre;
+      inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoLivre(); } });
+      btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
+    }catch(e){ console.error('livre search v27 erro', e); }
   }
 
   function renderConsumo(){
@@ -340,8 +339,8 @@ Error generating stack: `+u.message+`
         </div>
         <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V26 - Com seleção de posição</div>
-            <div style="font-size:10px; color:#10b981; background:#0e0e10; border:1px solid #10b981; border-radius:9999px; padding:4px 10px;">Seleção posição</div>
+            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V27 - Selecionar posição para baixa</div>
+            <div style="font-size:10px; color:#10b981; background:#0e0e10; border:1px solid #10b981; border-radius:9999px; padding:4px 10px;">${getC().length} baixas</div>
           </div>
           <div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;">
             <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO (todas localizações)</label>
@@ -356,7 +355,7 @@ Error generating stack: `+u.message+`
             <div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div>
             <div id="c-sku" style="color:#71717a; font-size:11px; margin-top:2px;"></div>
             <div style="margin-top:10px; padding:10px; background:#151518; border:1px solid #fbbf24; border-radius:10px;">
-              <div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE DE QUAL POSIÇÃO VAI BAIXAR:</div>
+              <div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE DE QUAL POSIÇÃO VAI BAIXAR (clique):</div>
               <div id="c-pos-detalhe" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
             <div style="margin-top:10px; padding:8px; background:#151518; border:1px solid #2a2a30; border-radius:8px; font-size:11px; color:#71717a; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
@@ -517,12 +516,11 @@ Error generating stack: `+u.message+`
       sel=m;
       posicoesSelecionadas=new Set();
       card.style.display='block';
-      const ruas=getR();
       document.getElementById('c-nome').textContent=m.nome||m.codigo;
-      document.getElementById('c-sku').textContent=`${m.codigo} | ${m.numLocalizacoes} posição(ões) + ${m.livre.length} no Livre | IDs: ${m.ids.length}`;
+      document.getElementById('c-sku').textContent=`${m.codigo} | ${m.numLocalizacoes} posição(ões) + ${m.livre.length} no Livre`;
       document.getElementById('c-total').textContent=m.total;
       document.getElementById('c-livre-aloc').textContent=`Livre: ${m.totalLivre} un | Alocado: ${m.totalPos} un`;
-      document.getElementById('c-multi-info').textContent= m.numLocalizacoes===0 ? 'SÓ NO LIVRE' : m.numLocalizacoes===1 ? '1 LOCALIZAÇÃO' : `${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S)`;
+      document.getElementById('c-multi-info').textContent= m.numLocalizacoes===0 ? 'SÓ NO LIVRE' : m.numLocalizacoes===1 ? '1 LOCALIZAÇÃO' : `${m.numLocalizacoes} LOCALIZAÇÕES`;
 
       const header=document.getElementById('c-header-local');
       if(m.numLocalizacoes===0){
@@ -531,7 +529,7 @@ Error generating stack: `+u.message+`
         const p=m.pos[0];
         header.innerHTML=`<div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:9999px; padding:6px 12px; font-size:11px; color:#10b981; font-weight:bold;">📍 1 LOCALIZAÇÃO: ${p.ruaNome} N${String(p.ni).padStart(2,'0')} D${String(p.dv).padStart(2,'0')} (${p.q} un)</div><div style="font-size:10px; color:#71717a;">Total: ${m.total} un</div>`;
       } else {
-        header.innerHTML=`<div style="background:rgba(124,58,237,0.15); border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S) - Selecione de qual baixar - Total ${m.totalPos} un + Livre ${m.totalLivre} un = ${m.total} un</div><div style="font-size:10px; color:#fbbf24; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; font-weight:bold;">👇 Clique abaixo</div>`;
+        header.innerHTML=`<div style="background:rgba(124,58,237,0.15); border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S) - Selecione de qual baixar</div><div style="font-size:10px; color:#fbbf24; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; font-weight:bold;">👇 Clique abaixo</div>`;
       }
 
       const detalhe=document.getElementById('c-pos-detalhe');
@@ -569,7 +567,7 @@ Error generating stack: `+u.message+`
                 <div style="background:#fbbf24; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:9px;">LIVRE</div>
                 <div>
                   <div style="font-size:11px; color:#fbbf24; font-weight:bold;">📦 LIVRE - ${l.q} un</div>
-                  <div style="font-size:10px; color:#71717a;">Código: ${l.codigo} | ID: ${l.id}</div>
+                  <div style="font-size:10px; color:#71717a;">Código: ${l.codigo} | ID: ${l.id.substring(0,15)}</div>
                 </div>
               </div>
               <div style="background:#fbbf24; border-radius:9999px; padding:6px 12px; font-size:12px; color:black; font-weight:bold;">${l.q} un</div>
@@ -591,7 +589,7 @@ Error generating stack: `+u.message+`
       });
       setTimeout(()=>atualizarSelecao(), 100);
       res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; padding:10px; border-radius:8px; font-size:12px;">
-        <div style="font-weight:bold;">✅ ENCONTRADO: ${m.codigo} - Total ${m.total} un em ${m.numLocalizacoes} pos + ${m.totalLivre} un Livre</div>
+        <div style="font-weight:bold;">✅ ENCONTRADO: ${m.codigo} - Total ${m.total} un</div>
         <div style="margin-top:6px; font-size:11px; color:#fbbf24; font-weight:bold;">👇 Selecione abaixo de qual posição vai baixar</div>
       </div>`;
     }
@@ -624,7 +622,7 @@ Error generating stack: `+u.message+`
           sel.pos.forEach(p=>{ if(posicoesSelecionadas.has(p.uniqueKey)) selecionadas.push({tipo:'pos', dados:p}); });
           sel.livre.forEach(l=>{ if(posicoesSelecionadas.has(l.uniqueKey)) selecionadas.push({tipo:'livre', dados:l}); });
           const totalSelecionado=selecionadas.reduce((s, item)=>s+item.dados.q, 0);
-          if(q>totalSelecionado){ alert(`Você selecionou ${totalSelecionado} un, mas quer baixar ${q} un. Selecione mais posições ou diminua a Qtd.`); return; }
+          if(q>totalSelecionado){ alert(`Você selecionou ${totalSelecionado} un, mas quer baixar ${q} un.`); return; }
         }
 
         let rest=q; let pos=getP(); let livre=getL(); let logs=[];
@@ -728,21 +726,21 @@ Error generating stack: `+u.message+`
         const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque'));
         if(!isEstoque) return;
         const main=document.querySelector('main'); if(!main) return;
-        if(document.getElementById('pesquisa-estoque-bar-v26')) return;
+        if(document.getElementById('pesquisa-estoque-bar-v27')) return;
         const ruas=getR();
         const bar=document.createElement('div');
-        bar.id='pesquisa-estoque-bar-v26';
+        bar.id='pesquisa-estoque-bar-v27';
         bar.style.cssText='background:#151518; border:2px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;';
         bar.innerHTML=`
           <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO NAS RUAS - TODAS localizações</div><div style="font-size:10px; color:#71717a;">${ruas.length} ruas</div></div>
-          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v26" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v26" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v26" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
-          <div id="estoque-busca-res-v26" style="margin-top:12px;"></div>
+          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v27" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v27" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v27" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
+          <div id="estoque-busca-res-v27" style="margin-top:12px;"></div>
         `;
         main.prepend(bar);
-        const inp=document.getElementById('estoque-busca-input-v26');
-        const btn=document.getElementById('estoque-busca-btn-v26');
-        const btnLimpar=document.getElementById('estoque-busca-limpar-v26');
-        const res=document.getElementById('estoque-busca-res-v26');
+        const inp=document.getElementById('estoque-busca-input-v27');
+        const btn=document.getElementById('estoque-busca-btn-v27');
+        const btnLimpar=document.getElementById('estoque-busca-limpar-v27');
+        const res=document.getElementById('estoque-busca-res-v27');
         function buscarNoEstoque(){
           const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
           const m=buscarMultiLocal(cod);
@@ -771,7 +769,7 @@ Error generating stack: `+u.message+`
                 <div style="background:#151518; border:1px solid ${isMulti? '#7c3aed' : '#2a2a30'}; border-radius:12px; padding:12px; display:flex; gap:12px; margin-bottom:8px;">
                   <div style="background:${isMulti? '#7c3aed' : '#10b981'}; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:${isMulti? 'white' : 'black'}; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.ni).padStart(2,'0')}</div>
                   <div style="flex:1;">
-                    <div style="color:white; font-weight:bold;">${a.codigo} | ID: ${a.materialId}</div>
+                    <div style="color:white; font-weight:bold;">${a.codigo} | ID: ${a.materialId.substring(0,15)}...</div>
                     <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
                       <span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa;">📍 ${a.ruaNome} N${a.ni} D${a.dv} Pos ${a.posId}</span>
                       <span style="background:${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 10px; font-size:11px; color:${isMulti? 'white' : 'black'}; font-weight:bold;">${a.q} un</span>
@@ -794,23 +792,28 @@ Error generating stack: `+u.message+`
       for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ if((d.textContent||'').includes('Livre')){ bar=d; break; } } }
       if(!bar){ const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent && x.textContent.includes('Livre')); if(b) bar=b.parentElement; }
       if(!bar) return false;
-      if(bar.querySelector('#btn-v26-consumo')) return true;
+      if(bar.querySelector('#btn-v27-consumo')) return true;
       const btnConsumo=document.createElement('button');
-      btnConsumo.id='btn-v26-consumo'; btnConsumo.textContent=`📦 Consumo V26 • ${getC().length}`;
+      btnConsumo.id='btn-v27-consumo'; btnConsumo.textContent=`📦 Consumo V27 • ${getC().length}`;
       btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;';
       btnConsumo.onclick=openConsumo;
       const btnLivre=document.createElement('button');
-      btnLivre.id='btn-v26-livre'; btnLivre.textContent='➕ Código Livre';
+      btnLivre.id='btn-v27-livre'; btnLivre.textContent='➕ Código Livre';
       btnLivre.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #fbbf24; background:#fbbf24; color:black; font-weight:bold;';
       btnLivre.onclick=()=>{ renderLivreModal(); };
       bar.appendChild(btnConsumo);
       bar.appendChild(btnLivre);
-      renderEstoqueSearch();
-      renderLivreSearch();
       return true;
     }catch{ return false; }
   }
-  function init(){ setTimeout(()=>{ let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } }, 600); }, 1000); }
+  function init(){
+    setTimeout(()=>{
+      let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } }, 600);
+    }, 1000);
+    // Checa Livre e Estoque a cada 800ms
+    setInterval(()=>{ try{ renderLivreSearch(); }catch{} }, 800);
+    setInterval(()=>{ try{ renderEstoqueSearch(); }catch{} }, 800);
+  }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
   window.addEventListener('load', init);
 })();
