@@ -35,154 +35,165 @@ Error generating stack: `+u.message+`
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
 <div id="livre-individual-root" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.85); overflow:auto; align-items:center; justify-content:center;"></div>
-<div id="sync-status-v33" style="position:fixed; bottom:16px; right:16px; z-index:9999999; background:#151518; border:2px solid #10b981; border-radius:12px; padding:8px 12px; font-size:11px; color:white; display:flex; align-items:center; gap:8px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-  <div id="sync-dot-v33" style="width:10px; height:10px; border-radius:50%; background:#10b981;"></div>
-  <div id="sync-text-v33">🔄 V33 Sem recarregar - Não atrapalha</div>
-</div>
-<div id="sync-update-banner-v33" style="display:none; position:fixed; top:70px; left:50%; transform:translateX(-50%); z-index:9999999; background:#7c3aed; color:white; border-radius:9999px; padding:10px 20px; font-size:12px; font-weight:bold; box-shadow:0 4px 20px rgba(124,58,237,0.4); align-items:center; gap:12px;">
-  <span id="sync-banner-text-v33">🔄 Atualizado de outro dispositivo!</span>
-  <button id="sync-banner-btn-v33" style="background:white; color:#7c3aed; border:none; border-radius:9999px; padding:6px 14px; font-size:11px; font-weight:bold; cursor:pointer;">Clique para ver alteração</button>
-  <button id="sync-banner-close-v33" style="background:rgba(0,0,0,0.2); color:white; border:none; border-radius:50%; width:24px; height:24px; font-size:12px; cursor:pointer;">✕</button>
+<div id="sync-status-v31" style="position:fixed; bottom:16px; right:16px; z-index:9999999; background:#151518; border:2px solid #10b981; border-radius:12px; padding:8px 12px; font-size:11px; color:white; display:flex; align-items:center; gap:8px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+  <div id="sync-dot-v31" style="width:10px; height:10px; border-radius:50%; background:#10b981; animation: pulse 2s infinite;"></div>
+  <div id="sync-text-v31">🔄 Auto-sync V31 - Sem mensagem</div>
 </div>
 <style>
+@keyframes pulse { 0%{opacity:1} 50%{opacity:0.5} 100%{opacity:1} }
 @keyframes slideIn { from{transform:translateX(100%); opacity:0} to{transform:translateX(0); opacity:1} }
-.sync-toast-v33 { position:fixed; top:80px; right:16px; z-index:9999999; background:#10b981; color:black; font-weight:bold; border-radius:12px; padding:10px 16px; font-size:11px; animation: slideIn 0.3s ease; box-shadow:0 4px 20px rgba(0,0,0,0.5); max-width:300px; }
+.sync-toast-v31 { position:fixed; top:80px; right:16px; z-index:9999999; background:#10b981; color:black; font-weight:bold; border-radius:12px; padding:10px 16px; font-size:12px; animation: slideIn 0.3s ease; box-shadow:0 4px 20px rgba(0,0,0,0.5); }
 </style>
 <script>
 (function(){
-  // Bloqueia popup antigo da foto
-  const origConfirm=window.confirm;
-  window.confirm=function(msg){
-    const m=String(msg||'').toLowerCase();
-    if(m.includes('posições atualizadas') || m.includes('posicoes atualizadas') || m.includes('recarregar estoque') || m.includes('dados atualizados') || (m.includes('outro dispositivo') && m.includes('recarregar'))){
-      console.log('🚫 V33 bloqueou popup:', msg);
-      return false;
+  // BLOQUEIA QUALQUER confirm/alert de recarregar que venha de versão antiga
+  const originalConfirm = window.confirm;
+  const originalAlert = window.alert;
+  window.confirm = function(msg){
+    const msgLower = String(msg||'').toLowerCase();
+    if(msgLower.includes('posições atualizadas') || msgLower.includes('posicoes atualizadas') || msgLower.includes('recarregar estoque') || msgLower.includes('dados atualizados') || msgLower.includes('outro dispositivo') && msgLower.includes('recarregar')){
+      console.log('🚫 V31 BLOQUEOU mensagem de recarregar:', msg);
+      return false; // Não recarrega, deixa o auto-sync fazer silencioso
     }
-    return origConfirm.apply(window, arguments);
+    return originalConfirm.apply(window, arguments);
   };
 
   const KM="wms_final_materiais", KP="wms_final_posicoes", KC="wms_final_consumos", KR="wms_final_ruas";
   const FB_URL="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com";
   const FB="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
 
-  let firebaseApp=null, db=null, ignoreNext=false, syncEnabled=false;
-  let hasPendingUpdate=false;
-  let pendingUpdateData=null;
+  let firebaseApp=null;
+  let db=null;
+  let ignoreNextFirebaseUpdate=false;
+  let syncEnabled=false;
 
   function showToast(msg, color){
-    document.querySelectorAll('.sync-toast-v33').forEach(e=>e.remove());
-    const t=document.createElement('div'); t.className='sync-toast-v33'; t.style.background=color||'#10b981';
-    if(color==='#7c3aed') t.style.color='white'; else t.style.color='black';
-    t.textContent=msg; document.body.appendChild(t);
-    setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(100%)'; setTimeout(()=>t.remove(),300); }, 4000);
+    const existing=document.querySelectorAll('.sync-toast-v31');
+    existing.forEach(e=>e.remove());
+    const toast=document.createElement('div');
+    toast.className='sync-toast-v31';
+    toast.style.background=color||'#10b981';
+    if(color==='#7c3aed') toast.style.color='white';
+    else toast.style.color='black';
+    toast.textContent=msg;
+    document.body.appendChild(toast);
+    setTimeout(()=>{ toast.style.opacity='0'; toast.style.transform='translateX(100%)'; setTimeout(()=>toast.remove(), 300); }, 2500);
   }
 
-  function showUpdateBanner(text){
-    const banner=document.getElementById('sync-update-banner-v33');
-    const txt=document.getElementById('sync-banner-text-v33');
-    if(banner && txt){
-      txt.textContent=text||'🔄 Atualizado de outro dispositivo!';
-      banner.style.display='flex';
-      hasPendingUpdate=true;
+  function updateSyncStatus(status, text){
+    const dot=document.getElementById('sync-dot-v31');
+    const txt=document.getElementById('sync-text-v31');
+    const container=document.getElementById('sync-status-v31');
+    if(!dot || !txt) return;
+    if(status==='online'){
+      dot.style.background='#10b981';
+      txt.textContent=text||'🔄 Auto-sync V31 - Sem mensagem - Online';
+      container.style.borderColor='#10b981';
+    } else if(status==='syncing'){
+      dot.style.background='#fbbf24';
+      txt.textContent=text||'Salvando...';
+      container.style.borderColor='#fbbf24';
+    } else if(status==='offline'){
+      dot.style.background='#ef4444';
+      txt.textContent=text||'Offline';
+      container.style.borderColor='#ef4444';
+    } else if(status==='updated'){
+      dot.style.background='#7c3aed';
+      txt.textContent=text||'Atualizado automático!';
+      container.style.borderColor='#7c3aed';
+      showToast(text||'🔄 Atualizado automático!', '#7c3aed');
+      setTimeout(()=>{
+        if(syncEnabled){
+          dot.style.background='#10b981';
+          txt.textContent='🔄 Auto-sync V31 - Sem mensagem - Online';
+          container.style.borderColor='#10b981';
+        }
+      }, 2000);
     }
-  }
-
-  function hideUpdateBanner(){
-    const banner=document.getElementById('sync-update-banner-v33');
-    if(banner) banner.style.display='none';
-    hasPendingUpdate=false;
-  }
-
-  function updateStatus(status, text){
-    const dot=document.getElementById('sync-dot-v33'), txt=document.getElementById('sync-text-v33'), cont=document.getElementById('sync-status-v33');
-    if(!dot||!txt) return;
-    if(status==='online'){ dot.style.background='#10b981'; txt.textContent=text||'🔄 V33 Não atrapalha - Online'; cont.style.borderColor='#10b981'; }
-    else if(status==='syncing'){ dot.style.background='#fbbf24'; txt.textContent=text||'Salvando...'; cont.style.borderColor='#fbbf24'; }
-    else if(status==='offline'){ dot.style.background='#ef4444'; txt.textContent=text||'Offline'; cont.style.borderColor='#ef4444'; }
-    else if(status==='updated'){ dot.style.background='#7c3aed'; txt.textContent=text||'Atualizado! Clique no banner'; cont.style.borderColor='#7c3aed'; }
   }
 
   function initFirebaseRealtime(){
     try{
-      if(typeof firebase==='undefined'){ updateStatus('offline','Polling V33 - Não atrapalha'); initPollingNoReload(); return; }
-      if(!firebase.apps.length){ firebaseApp=firebase.initializeApp({databaseURL: FB_URL}); } else { firebaseApp=firebase.app(); }
-      db=firebase.database(); syncEnabled=true;
-      updateStatus('online','🔄 V33 Não atrapalha - Online - Sem recarregar automático');
+      if(typeof firebase==='undefined'){
+        updateSyncStatus('offline', 'Polling automático V31');
+        initPollingAuto();
+        return;
+      }
+      if(!firebase.apps.length){
+        firebaseApp=firebase.initializeApp({databaseURL: FB_URL});
+      } else {
+        firebaseApp=firebase.app();
+      }
+      db=firebase.database();
+      syncEnabled=true;
+      updateSyncStatus('online', '🔄 Auto-sync V31 - Sem mensagem - Online');
 
-      db.ref('wms_final/materiais').on('value', (snap)=>{
-        if(ignoreNext) return;
-        const data=snap.val();
+      db.ref('wms_final/materiais').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
         if(data && Array.isArray(data)){
           const localStr=localStorage.getItem(KM)||'[]';
           const remoteStr=JSON.stringify(data);
           if(localStr!==remoteStr){
-            // Verifica se usuário está digitando (não atrapalha)
-            const activeEl=document.activeElement;
-            const isTyping=activeEl && (activeEl.tagName==='INPUT' || activeEl.tagName==='TEXTAREA' || activeEl.tagName==='SELECT');
-            
             localStorage.setItem(KM, JSON.stringify(data));
-            console.log('V33: Materiais atualizado de outro dispositivo - salvo localStorage sem recarregar');
-            updateStatus('updated', `📦 Livre atualizado - ${data.length} itens - Clique no banner`);
-            showToast(`📦 Livre atualizado de outro dispositivo: ${data.length} itens - Continua trabalhando, clique no banner quando quiser ver`, '#fbbf24');
-            showUpdateBanner(`📦 Livre atualizado: ${data.length} itens de outro dispositivo`);
-            
-            // Atualiza contador na nossa barra amarela sem recarregar
-            try{
-              const badge=document.querySelector('#pesquisa-livre-bar-v33 span');
-              if(badge) badge.textContent=`${data.length} no Livre`;
-            }catch{}
+            updateSyncStatus('updated', `🔄 Livre auto: ${data.length} itens`);
+            console.log('V31 Auto-sync materiais', data.length);
           }
         }
       });
 
-      db.ref('wms_final/material_livre').on('value', (snap)=>{
-        if(ignoreNext) return;
-        const data=snap.val();
+      db.ref('wms_final/material_livre').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
         if(data && Array.isArray(data)){
           const localStr=localStorage.getItem(KM)||'[]';
           const remoteStr=JSON.stringify(data);
           if(localStr!==remoteStr && data.length>0){
             localStorage.setItem(KM, JSON.stringify(data));
-            updateStatus('updated', '📦 Livre sincronizado');
-            showToast('📦 Livre sincronizado de outro dispositivo - Clique no banner para ver', '#fbbf24');
-            showUpdateBanner('📦 Livre sincronizado de outro dispositivo');
+            updateSyncStatus('updated', '📦 Livre auto-sync');
           }
         }
       });
 
-      db.ref('wms_final/posicoes').on('value', (snap)=>{
-        if(ignoreNext) return;
-        const data=snap.val();
+      db.ref('wms_final/posicoes').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
         if(data && Array.isArray(data)){
           const localStr=localStorage.getItem(KP)||'[]';
           const remoteStr=JSON.stringify(data);
           if(localStr!==remoteStr){
             localStorage.setItem(KP, JSON.stringify(data));
-            console.log('V33: Posições atualizado - salvo sem recarregar, não atrapalha trabalho');
-            updateStatus('updated', '📍 Ruas atualizadas - Clique no banner');
-            showToast('📍 Posições atualizadas de outro dispositivo - Continua trabalhando! Clique no banner quando quiser ver alteração', '#7c3aed');
-            showUpdateBanner('📍 Posições atualizadas de outro dispositivo - Clique para ver');
+            updateSyncStatus('updated', '📍 Ruas auto-sync');
+            console.log('V31 Auto-sync posicoes', data.length);
           }
         }
       });
 
-      db.ref('wms_final/ruas').on('value', (snap)=>{
-        if(ignoreNext) return;
-        const data=snap.val();
+      db.ref('wms_final/ruas').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
         if(data) localStorage.setItem(KR, JSON.stringify(data));
       });
 
       db.ref('.info/connected').on('value', (snap)=>{
-        if(snap.val()===true){ updateStatus('online','🔄 V33 Não atrapalha - Online'); syncEnabled=true; }
-        else { updateStatus('offline','Offline - Reconectando...'); syncEnabled=false; }
+        if(snap.val()===true){
+          updateSyncStatus('online', '🔄 Auto-sync V31 - Sem mensagem - Online');
+          syncEnabled=true;
+        } else {
+          updateSyncStatus('offline', 'Offline - Reconectando...');
+          syncEnabled=false;
+        }
       });
-    }catch(e){ console.error('Erro Firebase V33', e); initPollingNoReload(); }
+    }catch(e){
+      console.error('Erro Firebase V31', e);
+      initPollingAuto();
+    }
   }
 
-  function initPollingNoReload(){
+  function initPollingAuto(){
     let lastM='', lastP='';
     setInterval(async()=>{
-      if(ignoreNext) return;
+      if(ignoreNextFirebaseUpdate) return;
       try{
         const resM=await fetch(FB+'/materiais.json?t='+Date.now());
         const dataM=await resM.json();
@@ -190,9 +201,7 @@ Error generating stack: `+u.message+`
           const hash=dataM.length+'-'+JSON.stringify(dataM).length;
           if(lastM && lastM!==hash){
             localStorage.setItem(KM, JSON.stringify(dataM));
-            updateStatus('updated','📦 Atualizado (polling) - Clique banner');
-            showToast('📦 Atualizado de outro dispositivo - Clique no banner', '#fbbf24');
-            showUpdateBanner('📦 Atualizado de outro dispositivo');
+            updateSyncStatus('updated', '🔄 Auto (polling)');
           }
           lastM=hash;
         }
@@ -202,29 +211,34 @@ Error generating stack: `+u.message+`
           const hash=dataP.length+'-'+JSON.stringify(dataP).length;
           if(lastP && lastP!==hash){
             localStorage.setItem(KP, JSON.stringify(dataP));
-            updateStatus('updated','📍 Atualizado (polling) - Clique banner');
-            showToast('📍 Atualizado de outro dispositivo - Clique no banner', '#7c3aed');
-            showUpdateBanner('📍 Atualizado de outro dispositivo');
+            updateSyncStatus('updated', '📍 Auto (polling)');
           }
           lastP=hash;
         }
-        if(syncEnabled) updateStatus('online','🔄 V33 Não atrapalha - Online');
+        if(syncEnabled) updateSyncStatus('online', '🔄 Auto-sync V31 - Sem mensagem - Online');
       }catch{}
-    }, 4000);
+    }, 2500);
   }
 
   async function salvarFirebaseTodos(livre, pos, ruas){
-    ignoreNext=true; updateStatus('syncing','Salvando e sincronizando...');
+    ignoreNextFirebaseUpdate=true;
+    updateSyncStatus('syncing', 'Salvando...');
     try{
-      const ps=[];
-      if(livre){ ps.push(fetch(FB+'/materiais.json',{method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})); ps.push(fetch(FB+'/material_livre.json',{method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})); }
-      if(pos) ps.push(fetch(FB+'/posicoes.json',{method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}));
-      if(ruas) ps.push(fetch(FB+'/ruas.json',{method:'PUT', body:JSON.stringify(ruas), headers:{'Content-Type':'application/json'}}));
-      await Promise.all(ps);
-      updateStatus('online','✅ Salvo! Outros verão sem serem interrompidos');
-      showToast('✅ Salvo! Outros dispositivos verão quando clicarem no banner - Não interrompe trabalho deles', '#10b981');
-      setTimeout(()=>{ ignoreNext=false; }, 3000);
-    }catch(e){ ignoreNext=false; updateStatus('offline','Erro ao salvar'); }
+      const promises=[];
+      if(livre) {
+        promises.push(fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}));
+        promises.push(fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}));
+      }
+      if(pos) promises.push(fetch(FB+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}));
+      if(ruas) promises.push(fetch(FB+'/ruas.json', {method:'PUT', body:JSON.stringify(ruas), headers:{'Content-Type':'application/json'}}));
+      await Promise.all(promises);
+      updateSyncStatus('online', '🔄 Salvo! Outros atualizaram sem mensagem');
+      showToast('✅ Salvo! Outros dispositivos atualizaram automático sem mensagem', '#10b981');
+      setTimeout(()=>{ ignoreNextFirebaseUpdate=false; }, 2500);
+    }catch(e){
+      ignoreNextFirebaseUpdate=false;
+      updateSyncStatus('offline', 'Erro ao salvar');
+    }
   }
 
   function getL(){ try{return JSON.parse(localStorage.getItem(KM)||"[]")}catch{return []} }
@@ -233,12 +247,26 @@ Error generating stack: `+u.message+`
   function getC(){ try{return JSON.parse(localStorage.getItem(KC)||"[]")}catch{return []} }
 
   function buscarMultiLocal(codigoBusca){
-    const cod=(codigoBusca||'').trim().toLowerCase(); if(!cod) return null;
-    const pos=getP(), livre=getL(), ruas=getR();
-    let achadosPos=[], totalPos=0, ids=new Set(), nome='';
-    for(const p of pos){ for(const it of (p.itens||[])){ if(String(it.codigo||'').toLowerCase().includes(cod) || String(it.descricao||'').toLowerCase().includes(cod)){ const rn=ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achadosPos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q:Number(it.qtd)||0, codigo:it.codigo, desc:it.descricao||'', materialId:it.materialId, ruaNome:rn, uniqueKey:`${p.posId}-${it.materialId}-${p.ruaIndex}`}); totalPos+=Number(it.qtd)||0; ids.add(String(it.materialId)); if(!nome) nome=it.descricao||it.codigo; } } }
-    let achadosLivre=[], totalLivre=0;
-    for(const m of livre){ if(String(m.codigo||'').toLowerCase().includes(cod) || String(m.sku||'').toLowerCase().includes(cod) || String(m.descricao||'').toLowerCase().includes(cod)){ let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; if(s>0){ achadosLivre.push({codigo:m.codigo||m.sku, desc:m.descricao||m.nome||'', q:s, id:m.id, uniqueKey:`LIVRE-${m.id}`, unidade:m.unidade||'UN'}); totalLivre+=s; ids.add(String(m.id)); if(!nome) nome=m.descricao||m.nome||m.codigo; } } }
+    const cod=(codigoBusca||'').trim().toLowerCase();
+    if(!cod) return null;
+    const pos=getP(); const livre=getL(); const ruas=getR();
+    let achadosPos=[]; let totalPos=0; let ids=new Set(); let nome='';
+    for(const p of pos){
+      for(const it of (p.itens||[])){
+        if(String(it.codigo||'').toLowerCase().includes(cod) || String(it.descricao||'').toLowerCase().includes(cod)){
+          const ruaNome=ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
+          achadosPos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q:Number(it.qtd)||0, codigo:it.codigo, desc:it.descricao||'', materialId:it.materialId, ruaNome:ruaNome, uniqueKey: `${p.posId}-${it.materialId}-${p.ruaIndex}`});
+          totalPos+=Number(it.qtd)||0; ids.add(String(it.materialId)); if(!nome) nome=it.descricao||it.codigo;
+        }
+      }
+    }
+    let achadosLivre=[]; let totalLivre=0;
+    for(const m of livre){
+      if(String(m.codigo||'').toLowerCase().includes(cod) || String(m.sku||'').toLowerCase().includes(cod) || String(m.descricao||'').toLowerCase().includes(cod)){
+        let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
+        if(s>0){ achadosLivre.push({codigo:m.codigo||m.sku, desc:m.descricao||m.nome||'', q:s, id:m.id, uniqueKey:`LIVRE-${m.id}`, unidade:m.unidade||'UN'}); totalLivre+=s; ids.add(String(m.id)); if(!nome) nome=m.descricao||m.nome||m.codigo; }
+      }
+    }
     if(achadosPos.length===0 && achadosLivre.length===0) return null;
     const porRua={}; achadosPos.forEach(a=>{ if(!porRua[a.ruaNome]) porRua[a.ruaNome]={total:0, pos:[]}; porRua[a.ruaNome].total+=a.q; porRua[a.ruaNome].pos.push(a); });
     return {codigo: codigoBusca.trim(), nome: nome||codigoBusca.trim(), pos: achadosPos, livre: achadosLivre, totalPos: totalPos, totalLivre: totalLivre, total: totalPos+totalLivre, porRua: porRua, numLocalizacoes: achadosPos.length, numRuas: Object.keys(porRua).length, ids: Array.from(ids), id: ids.size>0? Array.from(ids)[0] : codigoBusca.trim(), sku: codigoBusca.trim().toUpperCase()};
@@ -246,9 +274,18 @@ Error generating stack: `+u.message+`
 
   function getAll(){
     try{
-      const livre=getL(), pos=getP(), mapa=new Map();
-      for(const m of livre){ let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; mapa.set(String(m.id), {id:m.id, codigo:m.codigo||m.sku||'', nome:m.nome||m.descricao||'', total:s, livre:s, aloc:0, pos:[]}); }
-      for(const p of pos){ for(const it of (p.itens||[])){ const id=String(it.materialId), q=Number(it.qtd)||0; if(mapa.has(id)){ const e=mapa.get(id); e.aloc+=q; e.total=e.livre+e.aloc; e.pos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q}); } else mapa.set(id, {id:it.materialId, codigo:it.codigo||'', nome:it.descricao||'', total:q, livre:0, aloc:q, pos:[{posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q}]}); } }
+      const livre=getL(); const pos=getP(); const mapa=new Map();
+      for(const m of livre){
+        let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
+        mapa.set(String(m.id), {id:m.id, codigo:m.codigo||m.sku||'', sku:m.sku||m.codigo||'', nome:m.nome||m.descricao||'', total:s, livre:s, aloc:0, pos:[]});
+      }
+      for(const p of pos){
+        for(const it of (p.itens||[])){
+          const id=String(it.materialId); const q=Number(it.qtd)||0;
+          if(mapa.has(id)){ const e=mapa.get(id); e.aloc+=q; e.total=e.livre+e.aloc; e.pos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q}); }
+          else mapa.set(id, {id:it.materialId, codigo:it.codigo||'', sku:it.codigo||'', nome:it.descricao||'', total:q, livre:0, aloc:q, pos:[{posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q}]});
+        }
+      }
       return Array.from(mapa.values());
     }catch{ return []; }
   }
@@ -257,35 +294,75 @@ Error generating stack: `+u.message+`
     try{
       const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
       if(!isLivre) return;
-      let inputBusca=null; const inputs=Array.from(document.querySelectorAll('input'));
-      for(const inp of inputs){ if((inp.placeholder||'').toLowerCase().includes('buscar') && inp.offsetParent!==null && !inp.id.includes('v33')){ inputBusca=inp; break; } }
-      if(!inputBusca) return; if(inputBusca.dataset.lupaAtivadaV33) return;
-      inputBusca.dataset.lupaAtivadaV33='true'; inputBusca.style.border='2px solid #fbbf24';
-      let btnLupa=null, p=inputBusca.parentElement;
-      for(let i=0;i<4 && p;i++){ const cands=Array.from(p.querySelectorAll('button, div')); for(const c of cands){ if(c!==inputBusca && c.offsetParent!==null && (c.innerHTML.includes('svg') || c.querySelector('svg'))){ btnLupa=c; break; } } if(btnLupa) break; p=p.parentElement; }
-      if(btnLupa){ btnLupa.style.cursor='pointer'; btnLupa.style.border='2px solid #fbbf24'; btnLupa.title='Lupa V33 - Não atrapalha'; btnLupa.onclick=(e)=>{ e.preventDefault(); inputBusca.focus(); inputBusca.select(); if(inputBusca.value.trim()){ inputBusca.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('livre-busca-btn-v33')?.click(); } }; }
-      inputBusca.addEventListener('input', ()=>{ const inpAmarela=document.getElementById('livre-busca-input-v33'); if(inpAmarela && inpAmarela.value!==inputBusca.value) inpAmarela.value=inputBusca.value; });
-      inputBusca.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('livre-busca-btn-v33')?.click(); } });
+      let inputBusca=null;
+      const inputs=Array.from(document.querySelectorAll('input'));
+      for(const inp of inputs){
+        if((inp.placeholder||'').toLowerCase().includes('buscar') && inp.offsetParent!==null && !inp.id.includes('v31')){
+          inputBusca=inp; break;
+        }
+      }
+      if(!inputBusca) return;
+      if(inputBusca.dataset.lupaAtivadaV31) return;
+      inputBusca.dataset.lupaAtivadaV31='true';
+      inputBusca.style.border='2px solid #fbbf24';
+      let btnLupa=null;
+      let p=inputBusca.parentElement;
+      for(let i=0;i<4 && p;i++){
+        const cands=Array.from(p.querySelectorAll('button, div'));
+        for(const c of cands){ if(c!==inputBusca && c.offsetParent!==null && (c.innerHTML.includes('svg') || c.querySelector('svg'))){ btnLupa=c; break; } }
+        if(btnLupa) break; p=p.parentElement;
+      }
+      if(btnLupa){
+        btnLupa.style.cursor='pointer'; btnLupa.style.border='2px solid #fbbf24'; btnLupa.title='Lupa V31 - Auto-sync sem mensagem';
+        btnLupa.onclick=(e)=>{ e.preventDefault(); inputBusca.focus(); inputBusca.select(); if(inputBusca.value.trim()){ inputBusca.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('livre-busca-btn-v31')?.click(); } };
+      }
+      inputBusca.addEventListener('input', ()=>{
+        const inpAmarela=document.getElementById('livre-busca-input-v31');
+        if(inpAmarela && inpAmarela.value!==inputBusca.value) inpAmarela.value=inputBusca.value;
+      });
+      inputBusca.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('livre-busca-btn-v31')?.click(); } });
     }catch{}
   }
 
   function renderLivreModal(){
     const root=document.getElementById('livre-individual-root');
-    root.innerHTML=`<div style="background:#151518; border:2px solid #fbbf24; border-radius:20px; padding:20px; width:90%; max-width:520px; margin:40px auto;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;"><div style="color:#fbbf24; font-weight:bold; font-size:16px;">➕ CÓDIGO NO LIVRE - V33 Não atrapalha</div><button id="livre-modal-fechar" style="width:32px; height:32px; border-radius:9999px; background:#232326; color:white; border:none;">✕</button></div><div style="display:flex; flex-direction:column; gap:12px;"><div><label style="font-size:11px; color:#fbbf24; font-weight:bold;">CÓDIGO *</label><input id="livre-modal-codigo" style="width:100%; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:15px; font-weight:bold; margin-top:6px;" placeholder="AUT100190001970"></div><div><label style="font-size:11px; color:#a1a1aa;">Descrição</label><input id="livre-modal-desc" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;" placeholder="Descrição"></div><div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;"><div><label style="font-size:11px; color:#a1a1aa;">Qtd *</label><input id="livre-modal-qtd" type="number" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;" placeholder="25"></div><div><label style="font-size:11px; color:#a1a1aa;">Un</label><select id="livre-modal-un" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;"><option>UN</option><option>PC</option><option>KG</option><option>CX</option></select></div></div></div><div id="livre-modal-msg" style="display:none; margin-top:12px; padding:10px; border-radius:10px; font-size:12px; white-space:pre-wrap;"></div><div style="display:flex; gap:10px; margin-top:16px;"><button id="livre-modal-cancelar" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold;">Cancelar</button><button id="livre-modal-add" style="flex:1; height:44px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold;">+ ADICIONAR (Não atrapalha outros)</button></div><div style="margin-top:10px; font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:8px; padding:6px;">🔄 V33: Não recarrega automático! Outros dispositivos veem banner e clicam quando quiser - Não interrompe trabalho!</div></div>`;
+    root.innerHTML=`
+      <div style="background:#151518; border:2px solid #fbbf24; border-radius:20px; padding:20px; width:90%; max-width:520px; margin:40px auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div style="color:#fbbf24; font-weight:bold; font-size:16px;">➕ CÓDIGO NO LIVRE - V31 Sem mensagem</div>
+          <button id="livre-modal-fechar" style="width:32px; height:32px; border-radius:9999px; background:#232326; color:white; border:none;">✕</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div><label style="font-size:11px; color:#fbbf24; font-weight:bold;">CÓDIGO *</label><input id="livre-modal-codigo" style="width:100%; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:15px; font-weight:bold; margin-top:6px;" placeholder="AUT100190001970"></div>
+          <div><label style="font-size:11px; color:#a1a1aa;">Descrição</label><input id="livre-modal-desc" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;" placeholder="Descrição"></div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div><label style="font-size:11px; color:#a1a1aa;">Qtd *</label><input id="livre-modal-qtd" type="number" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;" placeholder="25"></div>
+            <div><label style="font-size:11px; color:#a1a1aa;">Un</label><select id="livre-modal-un" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;"><option>UN</option><option>PC</option><option>KG</option><option>CX</option></select></div>
+          </div>
+        </div>
+        <div id="livre-modal-msg" style="display:none; margin-top:12px; padding:10px; border-radius:10px; font-size:12px; white-space:pre-wrap;"></div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button id="livre-modal-cancelar" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold;">Cancelar</button>
+          <button id="livre-modal-add" style="flex:1; height:44px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold;">+ ADICIONAR AUTO-SYNC</button>
+        </div>
+        <div style="margin-top:10px; font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:8px; padding:6px;">🔄 V31: Sem mensagem de recarregar! Atualiza automático e silencioso nos outros dispositivos.</div>
+      </div>
+    `;
     root.style.display='flex'; document.body.style.overflow='hidden';
-    const inpCod=document.getElementById('livre-modal-codigo'), inpDesc=document.getElementById('livre-modal-desc'), inpQtd=document.getElementById('livre-modal-qtd'), selUn=document.getElementById('livre-modal-un'), btnAdd=document.getElementById('livre-modal-add'), btnCancel=document.getElementById('livre-modal-cancelar'), btnFechar=document.getElementById('livre-modal-fechar'), msg=document.getElementById('livre-modal-msg');
+    const inpCod=document.getElementById('livre-modal-codigo'); const inpDesc=document.getElementById('livre-modal-desc'); const inpQtd=document.getElementById('livre-modal-qtd'); const selUn=document.getElementById('livre-modal-un'); const btnAdd=document.getElementById('livre-modal-add'); const btnCancel=document.getElementById('livre-modal-cancelar'); const btnFechar=document.getElementById('livre-modal-fechar'); const msg=document.getElementById('livre-modal-msg');
     function fechar(){ root.style.display='none'; document.body.style.overflow=''; }
     btnCancel.onclick=fechar; btnFechar.onclick=fechar; root.onclick=(e)=>{ if(e.target===root) fechar(); };
     async function adicionar(){
       const codigo=(inpCod.value||'').trim(); if(!codigo){ msg.textContent='❌ Digite código'; msg.style.display='block'; msg.style.background='rgba(239,68,68,0.15)'; msg.style.color='#fca5a5'; return; }
       const qtd=Number((inpQtd.value||'').replace(',','.')); if(!qtd||qtd<=0){ msg.textContent='❌ Qtd inválida'; msg.style.display='block'; msg.style.background='rgba(239,68,68,0.15)'; msg.style.color='#fca5a5'; return; }
-      const desc=(inpDesc.value||'').trim()||codigo, un=selUn.value||'UN';
+      const desc=(inpDesc.value||'').trim()||codigo; const un=selUn.value||'UN';
       let livre=getL(); const idx=livre.findIndex(m=> String(m.codigo||'').toLowerCase()===codigo.toLowerCase() || String(m.sku||'').toLowerCase()===codigo.toLowerCase());
-      if(idx>=0){ let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0; livre[idx].saldo=s+qtd; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo; msg.textContent=`✅ ${s} + ${qtd} = ${s+qtd}`; }
-      else { const novo={id:`${codigo}-${Date.now()}`, codigo:codigo, descricao:desc, sku:codigo, nome:desc, unidade:un, qtd:qtd, saldo:qtd, quantidade:qtd, valor:0, local:'LIVRE'}; livre.push(novo); msg.textContent=`✅ Novo ${codigo} ${qtd} ${un}`; }
+      if(idx>=0){ let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0; livre[idx].saldo=s+qtd; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo; msg.textContent=`✅ ${s} + ${qtd} = ${s+qtd} - Sync auto`; }
+      else { const novo={id:`${codigo}-${Date.now()}`, codigo:codigo, descricao:desc, sku:codigo, nome:desc, unidade:un, qtd:qtd, saldo:qtd, quantidade:qtd, valor:0, local:'LIVRE'}; livre.push(novo); msg.textContent=`✅ Novo ${codigo} ${qtd} ${un} - Sync auto`; }
       msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
-      localStorage.setItem(KM, JSON.stringify(livre)); await salvarFirebaseTodos(livre, null, null);
-      msg.textContent+=`\n✅ Sincronizado! Outros não serão interrompidos`; setTimeout(()=>{ fechar(); location.reload(); }, 1000);
+      localStorage.setItem(KM, JSON.stringify(livre));
+      await salvarFirebaseTodos(livre, null, null);
+      msg.textContent+=`\n✅ Sincronizado sem mensagem!`; setTimeout(()=>{ fechar(); location.reload(); }, 1000);
     }
     btnAdd.onclick=adicionar;
     inpCod.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); inpDesc.focus(); } });
@@ -297,63 +374,219 @@ Error generating stack: `+u.message+`
   function renderLivreSearch(){
     try{
       const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
-      if(!isLivre){ const ex=document.getElementById('pesquisa-livre-bar-v33'); if(ex) ex.style.display='none'; return; }
+      if(!isLivre){ const existing=document.getElementById('pesquisa-livre-bar-v31'); if(existing) existing.style.display='none'; return; }
       const main=document.querySelector('main'); if(!main) return;
-      let bar=document.getElementById('pesquisa-livre-bar-v33'); if(bar){ bar.style.display='block'; return; }
-      bar=document.createElement('div'); bar.id='pesquisa-livre-bar-v33'; bar.style.cssText='background:#151518; border:3px solid #fbbf24; border-radius:16px; padding:16px; margin-bottom:16px;';
-      bar.innerHTML=`<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><div style="display:flex; align-items:center; gap:10px;"><div style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; width:32px; height:32px; display:flex; align-items:center; justify-content:center;">🔍</div><div><div style="color:#fbbf24; font-weight:bold; font-size:14px;">PESQUISAR NO LIVRE V33 - Não atrapalha trabalho</div><div style="color:#10b981; font-size:10px; font-weight:bold;">🔄 Atualiza no fundo, não recarrega automático - Você trabalha tranquilo!</div></div></div><div style="display:flex; gap:6px;"><span style="font-size:10px; color:#fbbf24; border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getL().length} no Livre</span><span style="font-size:10px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:4px 8px; background:#0e0e10;">Não atrapalha</span></div></div><div style="display:flex; gap:8px;"><input id="livre-busca-input-v33" style="flex:1; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="Digite código + ENTER - Não interrompe"><button id="livre-busca-btn-v33" style="height:48px; padding:0 20px; border-radius:12px; background:#fbbf24; color:black; font-weight:bold;">🔍 BUSCAR</button><button id="livre-busca-limpar-v33" style="height:48px; padding:0 14px; border-radius:12px; background:#232326; color:white; border:1px solid #2a2a30;">Limpar</button></div><div id="livre-busca-res-v33" style="margin-top:14px;"></div>`;
+      let bar=document.getElementById('pesquisa-livre-bar-v31');
+      if(bar){ bar.style.display='block'; return; }
+      bar=document.createElement('div'); bar.id='pesquisa-livre-bar-v31';
+      bar.style.cssText='background:#151518; border:3px solid #fbbf24; border-radius:16px; padding:16px; margin-bottom:16px;';
+      bar.innerHTML=`
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:16px;">🔍</div>
+            <div>
+              <div style="color:#fbbf24; font-weight:bold; font-size:14px;">PESQUISAR NO LIVRE V31 - Sem mensagem - Auto-sync</div>
+              <div style="color:#10b981; font-size:10px; font-weight:bold;">🔄 Atualiza automático e simultâneo sem aparecer mensagem!</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;"><span style="font-size:10px; color:#fbbf24; border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getL().length} no Livre</span><span style="font-size:10px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:4px 8px; background:#0e0e10;">Sem mensagem</span></div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <input id="livre-busca-input-v31" style="flex:1; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="Digite código + ENTER - Auto-sync sem mensagem!">
+          <button id="livre-busca-btn-v31" style="height:48px; padding:0 20px; border-radius:12px; background:#fbbf24; color:black; font-weight:bold; font-size:13px;">🔍 BUSCAR NO LIVRE</button>
+          <button id="livre-busca-limpar-v31" style="height:48px; padding:0 14px; border-radius:12px; background:#232326; color:white; border:1px solid #2a2a30;">Limpar</button>
+        </div>
+        <div id="livre-busca-res-v31" style="margin-top:14px;"></div>
+      `;
       main.prepend(bar);
-      const inp=document.getElementById('livre-busca-input-v33'), btn=document.getElementById('livre-busca-btn-v33'), btnL=document.getElementById('livre-busca-limpar-v33'), res=document.getElementById('livre-busca-res-v33');
-      function buscar(){ const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; } const m=buscarMultiLocal(cod); if(!m){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:10px;">❌ Código <b>${cod}</b> não encontrado.</div>`; return; } res.innerHTML=`<div style="background:#0e0e10; border:2px solid #fbbf24; border-radius:12px; padding:12px;"><div style="color:#fbbf24; font-weight:bold;">📦 ${m.codigo} - TOTAL ${m.total} un (Livre ${m.totalLivre} + Ruas ${m.totalPos})</div><div style="margin-top:8px;">${m.livre.map(l=>`<div style="background:#151518; border:1px solid #fbbf24; border-radius:10px; padding:10px; display:flex; justify-content:space-between; margin-bottom:6px;"><div><b style="color:white;">${l.codigo}</b> - ${l.q} un</div><div style="background:#fbbf24; color:black; border-radius:9999px; padding:4px 10px; font-weight:bold;">${l.q} un</div></div>`).join('')}${m.pos.map(p=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; justify-content:space-between; margin-bottom:6px;"><div><b style="color:white;">${p.codigo}</b> - ${p.q} un em ${p.ruaNome}</div><div style="background:#7c3aed; color:white; border-radius:9999px; padding:4px 10px; font-weight:bold;">${p.q} un</div></div>`).join('')}</div></div>`; }
-      btn.onclick=buscar; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscar(); } }); btnL.onclick=()=>{ inp.value=''; res.innerHTML=''; };
+      const inp=document.getElementById('livre-busca-input-v31'); const btn=document.getElementById('livre-busca-btn-v31'); const btnLimpar=document.getElementById('livre-busca-limpar-v31'); const res=document.getElementById('livre-busca-res-v31');
+      function buscarNoLivre(){
+        const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
+        const m=buscarMultiLocal(cod);
+        if(!m){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:10px; font-size:12px;">❌ Código <b>${cod}</b> não encontrado.</div>`; return; }
+        res.innerHTML=`<div style="background:#0e0e10; border:2px solid ${m.livre.length>0? '#fbbf24' : '#7c3aed'}; border-radius:12px; padding:12px;"><div style="color:${m.livre.length>0? '#fbbf24' : '#a78bfa'}; font-weight:bold;">${m.livre.length>0? `📦 NO LIVRE (${m.totalLivre} un)` : `📍 SÓ NAS RUAS`} - TOTAL ${m.total} un</div><div style="margin-top:8px;">${m.livre.map(l=>`<div style="background:#151518; border:1px solid #fbbf24; border-radius:10px; padding:10px; display:flex; justify-content:space-between; margin-bottom:6px;"><div><b style="color:white;">${l.codigo}</b> - ${l.q} un</div><div style="background:#fbbf24; color:black; border-radius:9999px; padding:4px 10px; font-weight:bold;">${l.q} un</div></div>`).join('')}${m.pos.map(p=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; justify-content:space-between; margin-bottom:6px;"><div><b style="color:white;">${p.codigo}</b> - ${p.q} un em ${p.ruaNome}</div><div style="background:#7c3aed; color:white; border-radius:9999px; padding:4px 10px; font-weight:bold;">${p.q} un</div></div>`).join('')}</div></div>`;
+      }
+      btn.onclick=buscarNoLivre; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoLivre(); } }); btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
     }catch(e){}
   }
 
   function renderConsumo(){
-    const root=document.getElementById('consumo-root'); if(!root) return; const all=getAll(), cons=getC().slice().reverse();
-    root.innerHTML=`<div style="max-width:1440px; margin:0 auto; padding:16px;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30;">← Voltar</button><div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">🔄 V33 Não atrapalha - Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div></div><div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-bottom:16px;"><div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V33 - Não atrapalha trabalho - Auto-sync inteligente</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO - Não atrapalha</label><div style="display:flex; gap:8px; margin-top:6px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:14px; margin-bottom:12px;"><div id="c-header-local"></div><div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div><div id="c-sku" style="color:#71717a; font-size:11px;"></div><div style="margin-top:10px; padding:10px; background:#151518; border:1px solid #fbbf24; border-radius:10px;"><div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE POSIÇÃO:</div><div id="c-pos-detalhe" style="display:flex; flex-direction:column; gap:8px;"></div></div><div style="margin-top:10px; padding:8px; background:#151518; border:1px solid #2a2a30; border-radius:8px; font-size:11px; color:#71717a; display:flex; justify-content:space-between; flex-wrap:wrap;"><div>Selecionado: <span id="c-total-selecionado" style="color:#fbbf24; font-weight:bold; font-size:14px;">0 un</span> | Total: <span id="c-total" style="color:#10b981; font-weight:bold;"></span> un</div><div id="c-multi-info" style="color:#fbbf24; font-weight:bold;"></div></div><div id="c-selecao-resumo" style="margin-top:8px; display:none; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:8px; padding:8px; font-size:11px; color:#fbbf24;"></div></div><div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:12px; padding:12px;"><div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Baixa com OP (não atrapalha outros):</div><div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;"><div><label style="font-size:10px; color:#a1a1aa;">Qtd *</label><input id="c-qtd" type="number" style="width:100%; height:44px; background:#151518; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:15px; font-weight:bold; margin-top:4px;" placeholder="5"></div><div><label style="font-size:10px; color:#fbbf24; font-weight:bold;">OP *</label><input id="c-op" style="width:100%; height:44px; background:#151518; border:2px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; font-size:14px; font-weight:bold; margin-top:4px;" placeholder="OP 12345"></div><div><label style="font-size:10px; color:#a1a1aa;">Tipo</label><select id="c-tipo" style="width:100%; height:44px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; margin-top:4px;"><option>Produção</option><option>Perda</option><option>Devolução</option><option>Ajuste</option><option>Outro</option></select></div></div><div style="margin-top:10px;"><label style="font-size:10px; color:#a1a1aa;">Obs</label><input id="c-obs" style="width:100%; height:38px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; font-size:12px; margin-top:4px;" placeholder="Obs..."></div><div style="display:flex; gap:10px; margin-top:12px;"><button id="c-btn-todas" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold; font-size:12px;">Baixar TODAS</button><button id="c-btn" style="flex:2; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px;">✓ BAIXAR (Não atrapalha outros)</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap; font-size:12px;"></div></div></div><div style="background:#151518; border:2px solid #232326; border-radius:16px; overflow:hidden;"><div style="padding:12px; border-bottom:1px solid #232326; display:flex; justify-content:space-between;"><div><b style="color:white;">📋 HISTÓRICO</b><span style="font-size:11px; color:#71717a; margin-left:8px;">${cons.length} registros</span></div><div style="display:flex; gap:8px;"><input id="c-busca-hist" placeholder="Buscar OP..." style="height:32px; border-radius:9999px; background:#0e0e10; border:1px solid #232326; color:white; padding:0 12px; font-size:11px; width:160px;"><button id="c-limpar-hist" style="height:32px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px;">Limpar</button></div></div><div style="overflow:auto; max-height:400px;"><table style="width:100%; font-size:11px; color:#d4d4d8; border-collapse:collapse;"><thead style="position:sticky; top:0; background:#0e0e10; font-size:10px; color:#71717a;"><tr><th style="padding:10px; text-align:left;">Data</th><th style="padding:10px; text-align:left;">Código</th><th style="padding:10px; text-align:left;">Qtd</th><th style="padding:10px; text-align:left;">OP</th><th style="padding:10px; text-align:left;">Posição</th><th style="padding:10px; text-align:left;">Obs</th><th style="padding:10px; text-align:center;">Ação</th></tr></thead><tbody id="c-tbody"></tbody></table></div><div id="c-hist-vazio" style="display:none; padding:24px; text-align:center; color:#71717a; font-size:12px;"></div></div></div>`;
+    const root=document.getElementById('consumo-root'); if(!root) return;
+    const all=getAll(); const cons=getC().slice().reverse();
+    root.innerHTML=`
+      <div style="max-width:1440px; margin:0 auto; padding:16px; font-family:Inter,system-ui;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30;">← Voltar</button>
+          <div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">🔄 V31 Sem mensagem - Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div>
+        </div>
+        <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-bottom:16px;">
+          <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V31 - Sem mensagem - Auto-sync simultâneo</div>
+          <div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;">
+            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO - Auto-sync sem mensagem</label>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+              <input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970 + ENTER">
+              <button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR</button>
+            </div>
+            <div id="c-res" style="margin-top:8px;"></div>
+          </div>
+          <div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:14px; margin-bottom:12px;">
+            <div id="c-header-local"></div>
+            <div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div>
+            <div id="c-sku" style="color:#71717a; font-size:11px; margin-top:2px;"></div>
+            <div style="margin-top:10px; padding:10px; background:#151518; border:1px solid #fbbf24; border-radius:10px;">
+              <div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE DE QUAL POSIÇÃO VAI BAIXAR:</div>
+              <div id="c-pos-detalhe" style="display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+            <div style="margin-top:10px; padding:8px; background:#151518; border:1px solid #2a2a30; border-radius:8px; font-size:11px; color:#71717a; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>Selecionado: <span id="c-total-selecionado" style="color:#fbbf24; font-weight:bold; font-size:14px;">0 un</span> | Total: <span id="c-total" style="color:#10b981; font-size:16px; font-weight:bold;"></span> un | <span id="c-livre-aloc"></span></div>
+              <div id="c-multi-info" style="color:#fbbf24; font-weight:bold; font-size:11px;"></div>
+            </div>
+            <div id="c-selecao-resumo" style="margin-top:8px; display:none; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:8px; padding:8px; font-size:11px; color:#fbbf24;"></div>
+          </div>
+          <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:12px; padding:12px;">
+            <div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Baixa com OP (auto-sync sem mensagem):</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div><label style="font-size:10px; color:#a1a1aa;">Qtd *</label><input id="c-qtd" type="number" style="width:100%; height:44px; background:#151518; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:15px; font-weight:bold; margin-top:4px;" placeholder="5"></div>
+              <div><label style="font-size:10px; color:#fbbf24; font-weight:bold;">OP *</label><input id="c-op" style="width:100%; height:44px; background:#151518; border:2px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; font-size:14px; font-weight:bold; margin-top:4px;" placeholder="OP 12345"></div>
+              <div><label style="font-size:10px; color:#a1a1aa;">Tipo</label><select id="c-tipo" style="width:100%; height:44px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; margin-top:4px;"><option>Produção</option><option>Perda</option><option>Devolução</option><option>Ajuste</option><option>Outro</option></select></div>
+            </div>
+            <div style="margin-top:10px;"><label style="font-size:10px; color:#a1a1aa;">Obs</label><input id="c-obs" style="width:100%; height:38px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; font-size:12px; margin-top:4px;" placeholder="Obs..."></div>
+            <div style="display:flex; gap:10px; margin-top:12px;">
+              <button id="c-btn-todas" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold; font-size:12px;">Baixar de TODAS</button>
+              <button id="c-btn" style="flex:2; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px;">✓ BAIXAR SELECIONADA(S) AUTO</button>
+            </div>
+            <div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap; font-size:12px;"></div>
+            <div style="margin-top:8px; font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:8px; padding:6px;">🔄 V31: Sem mensagem! Sincroniza automático e simultâneo.</div>
+          </div>
+        </div>
+        <div style="background:#151518; border:2px solid #232326; border-radius:16px; overflow:hidden;">
+          <div style="padding:12px; border-bottom:1px solid #232326; display:flex; justify-content:space-between; align-items:center;">
+            <div><b style="color:white;">📋 HISTÓRICO</b><span style="font-size:11px; color:#71717a; margin-left:8px;">${cons.length} registros</span></div>
+            <div style="display:flex; gap:8px;">
+              <input id="c-busca-hist" placeholder="Buscar OP ou código..." style="height:32px; border-radius:9999px; background:#0e0e10; border:1px solid #232326; color:white; padding:0 12px; font-size:11px; width:160px;">
+              <button id="c-limpar-hist" style="height:32px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px; border:1px solid #2a2a30;">Limpar</button>
+            </div>
+          </div>
+          <div style="overflow:auto; max-height:400px;">
+            <table style="width:100%; font-size:11px; color:#d4d4d8; border-collapse:collapse;">
+              <thead style="position:sticky; top:0; background:#0e0e10; font-size:10px; color:#71717a; border-bottom:1px solid #232326;">
+                <tr><th style="padding:10px; text-align:left;">Data</th><th style="padding:10px; text-align:left;">Código</th><th style="padding:10px; text-align:left;">Qtd</th><th style="padding:10px; text-align:left;">OP</th><th style="padding:10px; text-align:left;">Posição</th><th style="padding:10px; text-align:left;">Obs</th><th style="padding:10px; text-align:center;">Ação</th></tr>
+              </thead>
+              <tbody id="c-tbody"></tbody>
+            </table>
+          </div>
+          <div id="c-hist-vazio" style="display:none; padding:24px; text-align:center; color:#71717a; font-size:12px;"></div>
+        </div>
+      </div>
+    `;
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
-    const inp=document.getElementById('c-cod'), btnB=document.getElementById('c-buscar'), res=document.getElementById('c-res'), card=document.getElementById('c-card');
-    let sel=null, posSel=new Set();
-    function renderHistorico(){ const tbody=document.getElementById('c-tbody'), vazio=document.getElementById('c-hist-vazio'); const busca=(document.getElementById('c-busca-hist')?.value||'').toLowerCase(); let lista=getC().slice().reverse(); if(busca) lista=lista.filter(h=> JSON.stringify(h).toLowerCase().includes(busca)); if(lista.length===0){ tbody.innerHTML=''; vazio.style.display='block'; vazio.textContent=busca? `Nenhum para "${busca}"` : 'Nenhum consumo'; return; } vazio.style.display='none'; tbody.innerHTML=lista.map(h=>`<tr style="border-bottom:1px solid #1e1e22;"><td style="padding:10px; font-size:10px; color:#71717a;">${h.data||''}</td><td style="padding:10px;"><div style="color:white; font-weight:bold; font-size:11px;">${h.sku||''}</div></td><td style="padding:10px; color:#ef4444; font-weight:bold;">-${h.qtd||0}</td><td style="padding:10px;"><span style="background:#fbbf24; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">${h.op||''}</span></td><td style="padding:10px; font-size:9px; color:#a78bfa; white-space:pre-wrap; max-width:180px;">${h.log||''}</td><td style="padding:10px; font-size:9px; color:#71717a;">${h.obs||''}</td><td style="padding:10px; text-align:center;"><button class="btn-estornar" data-id="${h.id}" style="height:28px; padding:0 10px; border-radius:9999px; background:#ef4444; color:white; font-size:10px; font-weight:bold; border:none;">↩ Estornar</button></td></tr>`).join(''); tbody.querySelectorAll('.btn-estornar').forEach(btn=>{ btn.onclick=async()=>{ const id=Number(btn.dataset.id), hist=getC().find(x=>x.id===id); if(!hist) return; let pos=getP(), livre=getL(), rest=Number(hist.qtd)||0; const logs=(hist.log||'').split('\n'); for(const logLine of logs){ if(rest<=0) break; const mPos=logLine.match(/(\d+-\d+-\d+)/); if(mPos){ const posId=mPos[1], p=pos.find(pp=>pp.posId===posId); if(p){ let baixada=0; const mQtd=logLine.match(/(\d+)->(\d+)/) || logLine.match(/(\d+)→(\d+)/); if(mQtd) baixada=Number(mQtd[1])-Number(mQtd[2]); else baixada=Math.min(rest, Number(hist.qtd)); if(baixada>0){ const ex=p.itens.find(it=> String(it.materialId)===String(hist.materialId) || String(it.codigo||'').toLowerCase()===String(hist.sku||'').toLowerCase()); if(ex) ex.qtd=Number(ex.qtd||0)+baixada; else p.itens.push({materialId:hist.materialId, codigo:hist.sku, descricao:hist.nome||hist.sku, qtd:baixada}); rest-=baixada; } } } } if(rest>0){ const idx=livre.findIndex(m=> String(m.id)===String(hist.materialId) || String(m.codigo||'').toLowerCase()===String(hist.sku||'').toLowerCase()); if(idx>=0){ let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0; livre[idx].saldo=s+rest; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo; } else livre.push({id:hist.materialId||`${hist.sku}-${Date.now()}`, codigo:hist.sku, descricao:hist.nome||hist.sku, sku:hist.sku, nome:hist.nome||hist.sku, unidade:'UN', qtd:rest, saldo:rest, quantidade:rest, valor:0, local:'LIVRE'}); } localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre)); await salvarFirebaseTodos(livre, pos, null); const novoHist=getC().filter(x=>x.id!==id); localStorage.setItem(KC, JSON.stringify(novoHist)); showToast(`✅ Estornado! ${hist.qtd} un - Não atrapalha outros`, '#10b981'); setTimeout(()=>location.reload(),800); }; }); }
-    function atualizarSel(){ const totalEl=document.getElementById('c-total-selecionado'), resumo=document.getElementById('c-selecao-resumo'); if(!sel) return; let tot=0, sels=[]; if(sel.pos) sel.pos.forEach(p=>{ if(posSel.has(p.uniqueKey)){ tot+=p.q; sels.push(p); } }); if(sel.livre) sel.livre.forEach(l=>{ if(posSel.has(l.uniqueKey)){ tot+=l.q; sels.push(l); } }); totalEl.textContent=tot+' un'; if(sels.length>0){ resumo.style.display='block'; resumo.innerHTML=`<div style="font-weight:bold; margin-bottom:4px;">✅ ${sels.length} posição(ões): ${tot} un</div>`+sels.map(s=>`<div>• ${s.ruaNome||'LIVRE'} ${s.posId||''} - ${s.q} un</div>`).join(''); } else resumo.style.display='none'; document.querySelectorAll('.pos-card').forEach(c=>{ const k=c.dataset.key; if(posSel.has(k)){ c.style.borderColor='#fbbf24'; c.style.background='rgba(251,191,36,0.1)'; c.querySelector('.check-icon').textContent='✅'; } else { c.style.borderColor='#2a2a30'; c.style.background='#151518'; c.querySelector('.check-icon').textContent='☐'; } }); }
-    function selMat(m){ sel=m; posSel=new Set(); card.style.display='block'; document.getElementById('c-nome').textContent=m.nome||m.codigo; document.getElementById('c-sku').textContent=`${m.codigo} | ${m.numLocalizacoes} pos + ${m.livre.length} Livre`; document.getElementById('c-total').textContent=m.total; document.getElementById('c-livre-aloc').textContent=`Livre: ${m.totalLivre} un | Alocado: ${m.totalPos} un`; document.getElementById('c-multi-info').textContent=m.numLocalizacoes===0?'SÓ NO LIVRE': m.numLocalizacoes===1?'1 LOCALIZAÇÃO':`${m.numLocalizacoes} LOCALIZAÇÕES`; const header=document.getElementById('c-header-local'); if(m.numLocalizacoes===0) header.innerHTML=`<div style="background:rgba(251,191,36,0.15); border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24; font-weight:bold;">📦 SÓ NO LIVRE - ${m.totalLivre} un</div>`; else if(m.numLocalizacoes===1){ const p=m.pos[0]; header.innerHTML=`<div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:9999px; padding:6px 12px; font-size:11px; color:#10b981; font-weight:bold;">📍 1 LOCAL: ${p.ruaNome} N${p.ni} D${p.dv} (${p.q} un)</div>`; } else header.innerHTML=`<div style="background:rgba(124,58,237,0.15); border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S)</div>`; const detalhe=document.getElementById('c-pos-detalhe'); let html=''; if(m.pos.length===1 && m.livre.length===0) posSel.add(m.pos[0].uniqueKey); if(m.pos.length>0){ html+=`<div style="font-size:11px; color:white; font-weight:bold; margin-bottom:6px;">📍 RUAS:</div>`; html+=m.pos.map(p=>{ const selc=posSel.has(p.uniqueKey); return `<div class="pos-card" data-key="${p.uniqueKey}" style="background:${selc?'rgba(251,191,36,0.1)':'#151518'}; border:2px solid ${selc?'#fbbf24':'#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><div style="display:flex; gap:8px; align-items:center;"><div class="check-icon" style="width:28px; height:28px; border-radius:9999px; background:${selc?'#fbbf24':'#232326'}; color:${selc?'black':'white'}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${selc?'✅':'☐'}</div><div style="background:#7c3aed; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div><div><div style="font-size:11px; color:#a78bfa; font-weight:bold;">${p.ruaNome} → N${p.ni} → D${p.dv} → Pos ${p.posId}</div><div style="font-size:10px; color:#71717a;">${p.codigo} | ${p.q} un</div></div></div><div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; font-size:12px; color:white; font-weight:bold;">${p.q} un</div></div>`; }).join(''); } if(m.livre.length>0){ html+=`<div style="font-size:11px; color:#fbbf24; font-weight:bold; margin-top:12px; margin-bottom:6px;">📦 LIVRE:</div>`; html+=m.livre.map(l=>{ const selc=posSel.has(l.uniqueKey); return `<div class="pos-card" data-key="${l.uniqueKey}" style="background:${selc?'rgba(251,191,36,0.1)':'#151518'}; border:2px solid ${selc?'#fbbf24':'#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><div style="display:flex; gap:8px; align-items:center;"><div class="check-icon" style="width:28px; height:28px; border-radius:9999px; background:${selc?'#fbbf24':'#232326'}; color:${selc?'black':'white'}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${selc?'✅':'☐'}</div><div style="background:#fbbf24; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:9px;">LIVRE</div><div><div style="font-size:11px; color:#fbbf24; font-weight:bold;">📦 LIVRE - ${l.q} un</div><div style="font-size:10px; color:#71717a;">${l.codigo}</div></div></div><div style="background:#fbbf24; border-radius:9999px; padding:6px 12px; font-size:12px; color:black; font-weight:bold;">${l.q} un</div></div>`; }).join(''); } detalhe.innerHTML=html; detalhe.querySelectorAll('.pos-card').forEach(ce=>{ ce.onclick=()=>{ const k=ce.dataset.key; if(posSel.has(k)) posSel.delete(k); else posSel.add(k); atualizarSel(); }; }); setTimeout(()=>atualizarSel(),100); res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; padding:10px; border-radius:8px; font-size:12px;"><div style="font-weight:bold;">✅ ENCONTRADO: ${m.codigo} - Total ${m.total} un</div></div>`; }
-    function doBusca(){ const cod=inp.value.trim(); if(!cod){ res.innerHTML='<div style="color:#ef4444;">Digite código</div>'; return; } const m=buscarMultiLocal(cod); if(m) selMat(m); else { res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:8px; border-radius:8px;">❌ Código <b>${cod}</b> não encontrado</div>`; card.style.display='none'; sel=null; } }
-    btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } }); document.getElementById('c-busca-hist')?.addEventListener('input', renderHistorico); document.getElementById('c-limpar-hist')?.addEventListener('click', ()=>{ document.getElementById('c-busca-hist').value=''; renderHistorico(); }); renderHistorico();
-    async function fazerBaixa(apenas){ try{ if(!sel){ alert('Busque código!'); return; } const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Qtd inválida'); return; } const op=(document.getElementById('c-op').value||'').trim(); if(!op){ alert('Digite OP!'); return; } const tipo=document.getElementById('c-tipo').value||'Produção', obs=(document.getElementById('c-obs').value||'').trim(); let sels=[]; if(apenas){ if(posSel.size===0){ alert('Selecione posição!'); return; } sel.pos.forEach(p=>{ if(posSel.has(p.uniqueKey)) sels.push({tipo:'pos', dados:p}); }); sel.livre.forEach(l=>{ if(posSel.has(l.uniqueKey)) sels.push({tipo:'livre', dados:l}); }); const tot=sels.reduce((s,it)=>s+it.dados.q,0); if(q>tot){ alert(`Selecionado ${tot} un, quer baixar ${q} un.`); return; } } let rest=q, pos=getP(), livre=getL(), logs=[], ruas=getR(); if(apenas){ for(const selItem of sels){ if(rest<=0) break; if(selItem.tipo==='pos'){ const pO=selItem.dados, p=pos.find(pp=>pp.posId===pO.posId && pp.ruaIndex===pO.ri); if(!p) continue; for(let i=0;i<p.itens.length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); const rn=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`; logs.push(`${rn} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar})`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } } else { const lO=selItem.dados, m=livre.find(mm=>String(mm.id)===String(lO.id)); if(!m) continue; let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; if(s<=0) continue; const usar=Math.min(s, rest); logs.push(`LIVRE: ${s}→${s-usar} (-${usar})`); m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo; rest-=usar; } } } else { for(const p of pos){ if(rest<=0) break; for(let i=0;i<(p.itens||[]).length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); const rn=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`; logs.push(`${rn} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar})`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } } pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; }); if(rest>0){ for(const m of livre){ if(String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase() || String(m.sku||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; if(s<=0) continue; const usar=Math.min(s, rest); logs.push(`LIVRE: ${s}→${s-usar} (-${usar})`); m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo; rest-=usar; if(rest<=0) break; } } } } pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; }); if(rest>0){ alert(`Faltam ${rest} un!`); return; } localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre)); await salvarFirebaseTodos(livre, pos, null); const reg={id:Date.now(), materialId:sel.id, sku:sel.codigo, nome:sel.nome||sel.codigo, qtd:q, op:op, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), totalAntes:sel.total, totalDepois:sel.total-q, ids:sel.ids}; const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC)); const msg=document.getElementById('c-msg'); msg.textContent=`✅ BAIXA! ${q} un de ${sel.codigo}\nOP: ${op}\n`+logs.join('\n')+`\nRecarregando...`; msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981'; renderHistorico(); setTimeout(()=>location.reload(),1200); }catch(e){ alert('Erro: '+e.message); } }
+    const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card');
+    let sel=null; let posicoesSelecionadas=new Set();
+    function renderHistorico(){
+      const tbody=document.getElementById('c-tbody'); const vazio=document.getElementById('c-hist-vazio');
+      const busca=(document.getElementById('c-busca-hist')?.value||'').toLowerCase();
+      let lista=getC().slice().reverse();
+      if(busca) lista=lista.filter(h=> JSON.stringify(h).toLowerCase().includes(busca));
+      if(lista.length===0){ tbody.innerHTML=''; vazio.style.display='block'; vazio.textContent=busca? `Nenhum resultado para "${busca}"` : 'Nenhum consumo ainda.'; return; }
+      vazio.style.display='none';
+      tbody.innerHTML=lista.map(h=>`<tr style="border-bottom:1px solid #1e1e22;"><td style="padding:10px; font-size:10px; color:#71717a;">${h.data||''}</td><td style="padding:10px;"><div style="color:white; font-weight:bold; font-size:11px;">${h.sku||''}</div></td><td style="padding:10px; color:#ef4444; font-weight:bold;">-${h.qtd||0}</td><td style="padding:10px;"><span style="background:#fbbf24; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">${h.op||'SEM OP'}</span></td><td style="padding:10px; font-size:9px; color:#a78bfa; white-space:pre-wrap; max-width:180px;">${h.log||''}</td><td style="padding:10px; font-size:9px; color:#71717a;">${h.obs||''}</td><td style="padding:10px; text-align:center;"><button class="btn-estornar" data-id="${h.id}" style="height:28px; padding:0 10px; border-radius:9999px; background:#ef4444; color:white; font-size:10px; font-weight:bold; border:none;">↩ Estornar</button></td></tr>`).join('');
+      tbody.querySelectorAll('.btn-estornar').forEach(btn=>{
+        btn.onclick=async()=>{
+          const id=Number(btn.dataset.id); const hist=getC().find(x=>x.id===id); if(!hist) return;
+          let pos=getP(); let livre=getL(); let qtdRestante=Number(hist.qtd)||0;
+          const logs=(hist.log||'').split('\n');
+          for(const logLine of logs){
+            if(qtdRestante<=0) break;
+            const mPos=logLine.match(/(\d+-\d+-\d+)/);
+            if(mPos){ const posId=mPos[1]; const p=pos.find(pp=>pp.posId===posId); if(p){ let baixada=0; const mQtd=logLine.match(/(\d+)->(\d+)/) || logLine.match(/(\d+)→(\d+)/); if(mQtd){ baixada=Number(mQtd[1])-Number(mQtd[2]); } else { baixada=Math.min(qtdRestante, Number(hist.qtd)); } if(baixada>0){ const existente=p.itens.find(it=> String(it.materialId)===String(hist.materialId) || String(it.codigo||'').toLowerCase()===String(hist.sku||'').toLowerCase()); if(existente){ existente.qtd=Number(existente.qtd||0)+baixada; } else { p.itens.push({materialId:hist.materialId, codigo:hist.sku, descricao:hist.nome||hist.sku, qtd:baixada}); } qtdRestante-=baixada; } } }
+          }
+          if(qtdRestante>0){ const idx=livre.findIndex(m=> String(m.id)===String(hist.materialId) || String(m.codigo||'').toLowerCase()===String(hist.sku||'').toLowerCase()); if(idx>=0){ let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0; livre[idx].saldo=s+qtdRestante; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo; } else { livre.push({id:hist.materialId||`${hist.sku}-${Date.now()}`, codigo:hist.sku, descricao:hist.nome||hist.sku, sku:hist.sku, nome:hist.nome||hist.sku, unidade:'UN', qtd:qtdRestante, saldo:qtdRestante, quantidade:qtdRestante, valor:0, local:'LIVRE'}); } }
+          localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre));
+          await salvarFirebaseTodos(livre, pos, null);
+          const novoHist=getC().filter(x=>x.id!==id); localStorage.setItem(KC, JSON.stringify(novoHist));
+          showToast(`✅ Estornado auto-sync! ${hist.qtd} un`, '#10b981'); setTimeout(()=>location.reload(), 800);
+        };
+      });
+    }
+    function atualizarSelecao(){
+      const totalSelEl=document.getElementById('c-total-selecionado'); const resumoEl=document.getElementById('c-selecao-resumo'); if(!sel) return;
+      let totalSelecionado=0; let selecionadas=[]; if(sel.pos) sel.pos.forEach(p=>{ if(posicoesSelecionadas.has(p.uniqueKey)) { totalSelecionado+=p.q; selecionadas.push(p); } }); if(sel.livre) sel.livre.forEach(l=>{ if(posicoesSelecionadas.has(l.uniqueKey)) { totalSelecionado+=l.q; selecionadas.push(l); } });
+      totalSelEl.textContent=totalSelecionado+' un';
+      if(selecionadas.length>0){ resumoEl.style.display='block'; resumoEl.innerHTML=`<div style="font-weight:bold; margin-bottom:4px;">✅ ${selecionadas.length} posição(ões): Total ${totalSelecionado} un</div>` + selecionadas.map(s=>`<div>• ${s.ruaNome||'LIVRE'} ${s.posId||''} - ${s.q} un</div>`).join(''); } else { resumoEl.style.display='none'; }
+      document.querySelectorAll('.pos-card').forEach(cardEl=>{ const key=cardEl.dataset.key; if(posicoesSelecionadas.has(key)){ cardEl.style.borderColor='#fbbf24'; cardEl.style.background='rgba(251,191,36,0.1)'; cardEl.querySelector('.check-icon').textContent='✅'; cardEl.querySelector('.check-icon').style.background='#fbbf24'; cardEl.querySelector('.check-icon').style.color='black'; } else { cardEl.style.borderColor='#2a2a30'; cardEl.style.background='#151518'; cardEl.querySelector('.check-icon').textContent='☐'; cardEl.querySelector('.check-icon').style.background='#232326'; cardEl.querySelector('.check-icon').style.color='white'; } });
+    }
+    function selMatMulti(m){
+      sel=m; posicoesSelecionadas=new Set(); card.style.display='block';
+      document.getElementById('c-nome').textContent=m.nome||m.codigo; document.getElementById('c-sku').textContent=`${m.codigo} | ${m.numLocalizacoes} posição(ões) + ${m.livre.length} no Livre`; document.getElementById('c-total').textContent=m.total; document.getElementById('c-livre-aloc').textContent=`Livre: ${m.totalLivre} un | Alocado: ${m.totalPos} un`; document.getElementById('c-multi-info').textContent= m.numLocalizacoes===0 ? 'SÓ NO LIVRE' : m.numLocalizacoes===1 ? '1 LOCALIZAÇÃO' : `${m.numLocalizacoes} LOCALIZAÇÕES`;
+      const header=document.getElementById('c-header-local'); if(m.numLocalizacoes===0){ header.innerHTML=`<div style="background:rgba(251,191,36,0.15); border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24; font-weight:bold;">📦 SÓ NO LIVRE - ${m.totalLivre} un</div>`; } else if(m.numLocalizacoes===1){ const p=m.pos[0]; header.innerHTML=`<div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:9999px; padding:6px 12px; font-size:11px; color:#10b981; font-weight:bold;">📍 1 LOCALIZAÇÃO: ${p.ruaNome} N${String(p.ni).padStart(2,'0')} D${String(p.dv).padStart(2,'0')} (${p.q} un)</div>`; } else { header.innerHTML=`<div style="background:rgba(124,58,237,0.15); border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S)</div>`; }
+      const detalhe=document.getElementById('c-pos-detalhe'); let html=''; if(m.pos.length===1 && m.livre.length===0) posicoesSelecionadas.add(m.pos[0].uniqueKey);
+      if(m.pos.length>0){ html+=`<div style="font-size:11px; color:white; font-weight:bold; margin-bottom:6px;">📍 RUAS:</div>`; html+=m.pos.map(p=>{ const isSelected=posicoesSelecionadas.has(p.uniqueKey); return `<div class="pos-card" data-key="${p.uniqueKey}" style="background:${isSelected? 'rgba(251,191,36,0.1)' : '#151518'}; border:2px solid ${isSelected? '#fbbf24' : '#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><div style="display:flex; gap:8px; align-items:center;"><div class="check-icon" style="width:28px; height:28px; border-radius:9999px; background:${isSelected? '#fbbf24' : '#232326'}; color:${isSelected? 'black' : 'white'}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${isSelected? '✅' : '☐'}</div><div style="background:#7c3aed; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div><div><div style="font-size:11px; color:#a78bfa; font-weight:bold;">${p.ruaNome} → N${p.ni} → D${p.dv} → Pos ${p.posId}</div><div style="font-size:10px; color:#71717a;">${p.codigo} | ${p.q} un</div></div></div><div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; font-size:12px; color:white; font-weight:bold;">${p.q} un</div></div>`; }).join(''); }
+      if(m.livre.length>0){ html+=`<div style="font-size:11px; color:#fbbf24; font-weight:bold; margin-top:12px; margin-bottom:6px;">📦 LIVRE:</div>`; html+=m.livre.map(l=>{ const isSelected=posicoesSelecionadas.has(l.uniqueKey); return `<div class="pos-card" data-key="${l.uniqueKey}" style="background:${isSelected? 'rgba(251,191,36,0.1)' : '#151518'}; border:2px solid ${isSelected? '#fbbf24' : '#2a2a30'}; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><div style="display:flex; gap:8px; align-items:center;"><div class="check-icon" style="width:28px; height:28px; border-radius:9999px; background:${isSelected? '#fbbf24' : '#232326'}; color:${isSelected? 'black' : 'white'}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${isSelected? '✅' : '☐'}</div><div style="background:#fbbf24; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:9px;">LIVRE</div><div><div style="font-size:11px; color:#fbbf24; font-weight:bold;">📦 LIVRE - ${l.q} un</div><div style="font-size:10px; color:#71717a;">${l.codigo}</div></div></div><div style="background:#fbbf24; border-radius:9999px; padding:6px 12px; font-size:12px; color:black; font-weight:bold;">${l.q} un</div></div>`; }).join(''); }
+      detalhe.innerHTML=html; detalhe.querySelectorAll('.pos-card').forEach(cardEl=>{ cardEl.onclick=()=>{ const key=cardEl.dataset.key; if(posicoesSelecionadas.has(key)) posicoesSelecionadas.delete(key); else posicoesSelecionadas.add(key); atualizarSelecao(); }; }); setTimeout(()=>atualizarSelecao(), 100); res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; padding:10px; border-radius:8px; font-size:12px;"><div style="font-weight:bold;">✅ ENCONTRADO: ${m.codigo} - Total ${m.total} un</div></div>`;
+    }
+    function doBusca(){ const cod=inp.value.trim(); if(!cod){ res.innerHTML='<div style="color:#ef4444;">Digite código</div>'; return; } const m=buscarMultiLocal(cod); if(m) selMatMulti(m); else { res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:8px; border-radius:8px;">❌ Código <b>${cod}</b> não encontrado</div>`; card.style.display='none'; sel=null; } }
+    btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } });
+    const buscaHist=document.getElementById('c-busca-hist'); const limparHist=document.getElementById('c-limpar-hist'); buscaHist?.addEventListener('input', renderHistorico); limparHist?.addEventListener('click', ()=>{ buscaHist.value=''; renderHistorico(); }); renderHistorico();
+    async function fazerBaixa(apenasSelecionadas){
+      try{
+        if(!sel){ alert('Busque o código primeiro!'); return; }
+        const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Digite Qtd válida'); return; }
+        const op=(document.getElementById('c-op').value||'').trim(); if(!op){ alert('Digite OP!'); return; }
+        const tipo=document.getElementById('c-tipo').value||'Produção'; const obs=(document.getElementById('c-obs').value||'').trim();
+        let selecionadas=[]; if(apenasSelecionadas){ if(posicoesSelecionadas.size===0){ alert('Selecione pelo menos 1 posição!'); return; } sel.pos.forEach(p=>{ if(posicoesSelecionadas.has(p.uniqueKey)) selecionadas.push({tipo:'pos', dados:p}); }); sel.livre.forEach(l=>{ if(posicoesSelecionadas.has(l.uniqueKey)) selecionadas.push({tipo:'livre', dados:l}); }); const totalSel=selecionadas.reduce((s, it)=>s+it.dados.q,0); if(q>totalSel){ alert(`Selecionado ${totalSel} un, quer baixar ${q} un.`); return; } }
+        let rest=q; let pos=getP(); let livre=getL(); let logs=[]; const ruas=getR();
+        if(apenasSelecionadas){ for(const selItem of selecionadas){ if(rest<=0) break; if(selItem.tipo==='pos'){ const pOrig=selItem.dados; const p=pos.find(pp=>pp.posId===pOrig.posId && pp.ruaIndex===pOrig.ri); if(!p) continue; for(let i=0;i<p.itens.length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); const ruaNome=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`; logs.push(`${ruaNome} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar})`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } } else { const lOrig=selItem.dados; const m=livre.find(mm=>String(mm.id)===String(lOrig.id)); if(!m) continue; let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; if(s<=0) continue; const usar=Math.min(s, rest); logs.push(`LIVRE: ${s}→${s-usar} (-${usar})`); m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo; rest-=usar; } } }
+        else { for(const p of pos){ if(rest<=0) break; for(let i=0;i<(p.itens||[]).length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); const ruaNome=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`; logs.push(`${ruaNome} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar})`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } } pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; }); if(rest>0){ for(const m of livre){ if(String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase() || String(m.sku||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; if(s<=0) continue; const usar=Math.min(s, rest); logs.push(`LIVRE: ${s}→${s-usar} (-${usar})`); m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo; rest-=usar; if(rest<=0) break; } } } }
+        pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; }); if(rest>0){ alert(`Faltam ${rest} un!`); return; }
+        localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre));
+        await salvarFirebaseTodos(livre, pos, null);
+        const reg={id:Date.now(), materialId:sel.id, sku:sel.codigo, nome:sel.nome||sel.codigo, qtd:q, op:op, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), totalAntes:sel.total, totalDepois:sel.total-q, ids:sel.ids};
+        const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
+        const msg=document.getElementById('c-msg'); msg.textContent=`✅ BAIXA AUTO-SYNC! ${q} un de ${sel.codigo}\nOP: ${op}\n`+logs.join('\n')+`\nRecarregando...`; msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
+        renderHistorico(); setTimeout(()=>location.reload(), 1200);
+      }catch(e){ alert('Erro: '+e.message); }
+    }
     document.getElementById('c-btn').onclick=()=>fazerBaixa(true); document.getElementById('c-btn-todas').onclick=()=>fazerBaixa(false);
   }
 
   function renderEstoqueSearch(){
-    const interval=setInterval(()=>{ try{ const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque')); if(!isEstoque) return; const main=document.querySelector('main'); if(!main) return; if(document.getElementById('pesquisa-estoque-bar-v33')) return; const ruas=getR(); const bar=document.createElement('div'); bar.id='pesquisa-estoque-bar-v33'; bar.style.cssText='background:#151518; border:2px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;'; bar.innerHTML=`<div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR NAS RUAS - V33 Não atrapalha</div><div style="font-size:10px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:4px 8px;">🔄 Auto ${ruas.length} ruas</div></div><div style="display:flex; gap:8px;"><input id="estoque-busca-input-v33" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v33" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v33" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div><div id="estoque-busca-res-v33" style="margin-top:12px;"></div>`; main.prepend(bar); const inp=document.getElementById('estoque-busca-input-v33'), btn=document.getElementById('estoque-busca-btn-v33'), btnL=document.getElementById('estoque-busca-limpar-v33'), res=document.getElementById('estoque-busca-res-v33'); function buscar(){ const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; } const m=buscarMultiLocal(cod); if(!m){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ Código ${cod} não encontrado</div>`; return; } res.innerHTML=`<div style="background:#0e0e10; border:2px solid #7c3aed; border-radius:12px; padding:12px;"><div style="color:#a78bfa; font-weight:bold;">⚠️ ${m.numLocalizacoes} LOCALIZAÇÕES - Total ${m.total} un</div>${m.pos.map(a=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:12px; padding:12px; display:flex; gap:12px; margin-top:8px;"><div style="background:#7c3aed; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.ni).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white; font-weight:bold;">${a.codigo} - ${a.q} un</div><div style="font-size:11px; color:#a78bfa;">📍 ${a.ruaNome} N${a.ni} D${a.dv} Pos ${a.posId}</div></div><div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; color:white; font-weight:bold;">${a.q} un</div></div>`).join('')}</div>`; } btn.onclick=buscar; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscar(); } }); btnL.onclick=()=>{ inp.value=''; res.innerHTML=''; }; }catch(e){} },800);
+    const interval=setInterval(()=>{
+      try{
+        const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque'));
+        if(!isEstoque) return;
+        const main=document.querySelector('main'); if(!main) return;
+        if(document.getElementById('pesquisa-estoque-bar-v31')) return;
+        const ruas=getR(); const bar=document.createElement('div'); bar.id='pesquisa-estoque-bar-v31';
+        bar.style.cssText='background:#151518; border:2px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;';
+        bar.innerHTML=`<div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR NAS RUAS - V31 Sem mensagem</div><div style="font-size:10px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:4px 8px;">🔄 Auto ${ruas.length} ruas</div></div><div style="display:flex; gap:8px;"><input id="estoque-busca-input-v31" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v31" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v31" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div><div id="estoque-busca-res-v31" style="margin-top:12px;"></div>`;
+        main.prepend(bar);
+        const inp=document.getElementById('estoque-busca-input-v31'); const btn=document.getElementById('estoque-busca-btn-v31'); const btnLimpar=document.getElementById('estoque-busca-limpar-v31'); const res=document.getElementById('estoque-busca-res-v31');
+        function buscarNoEstoque(){ const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; } const m=buscarMultiLocal(cod); if(!m){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ Código ${cod} não encontrado</div>`; return; } res.innerHTML=`<div style="background:#0e0e10; border:2px solid #7c3aed; border-radius:12px; padding:12px;"><div style="color:#a78bfa; font-weight:bold;">⚠️ ${m.numLocalizacoes} LOCALIZAÇÕES - Total ${m.total} un</div>${m.pos.map(a=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:12px; padding:12px; display:flex; gap:12px; margin-top:8px;"><div style="background:#7c3aed; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.ni).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white; font-weight:bold;">${a.codigo} - ${a.q} un</div><div style="font-size:11px; color:#a78bfa;">📍 ${a.ruaNome} N${a.ni} D${a.dv} Pos ${a.posId}</div></div><div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; color:white; font-weight:bold;">${a.q} un</div></div>`).join('')}</div>`; }
+        btn.onclick=buscarNoEstoque; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoEstoque(); } }); btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
+      }catch(e){}
+    }, 800);
   }
 
   function openConsumo(){ const r=document.getElementById('consumo-root'); renderConsumo(); r.style.display='block'; document.body.style.overflow='hidden'; }
   function inject(){
     try{
-      let bar=null; for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ if((d.textContent||'').includes('Livre')){ bar=d; break; } } }
+      let bar=null;
+      for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ if((d.textContent||'').includes('Livre')){ bar=d; break; } } }
       if(!bar){ const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent && x.textContent.includes('Livre')); if(b) bar=b.parentElement; }
-      if(!bar) return false; if(bar.querySelector('#btn-v33-consumo')) return true;
-      const btnC=document.createElement('button'); btnC.id='btn-v33-consumo'; btnC.textContent=`📦 Consumo V33 • ${getC().length}`; btnC.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;'; btnC.onclick=openConsumo;
-      const btnL=document.createElement('button'); btnL.id='btn-v33-livre'; btnL.textContent='➕ Código Livre'; btnL.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #fbbf24; background:#fbbf24; color:black; font-weight:bold;'; btnL.onclick=()=>{ renderLivreModal(); };
-      bar.appendChild(btnC); bar.appendChild(btnL); return true;
+      if(!bar) return false;
+      if(bar.querySelector('#btn-v31-consumo')) return true;
+      const btnConsumo=document.createElement('button'); btnConsumo.id='btn-v31-consumo'; btnConsumo.textContent=`📦 Consumo V31 • ${getC().length}`;
+      btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;'; btnConsumo.onclick=openConsumo;
+      const btnLivre=document.createElement('button'); btnLivre.id='btn-v31-livre'; btnLivre.textContent='➕ Código Livre'; btnLivre.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #fbbf24; background:#fbbf24; color:black; font-weight:bold;'; btnLivre.onclick=()=>{ renderLivreModal(); };
+      bar.appendChild(btnConsumo); bar.appendChild(btnLivre); return true;
     }catch{ return false; }
   }
   function init(){
-    setTimeout(()=>{ let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } },600); },1000);
-    setTimeout(()=>{ initFirebaseRealtime(); },1500);
-    setInterval(()=>{ try{ renderLivreSearch(); }catch{} },900);
-    setInterval(()=>{ try{ renderEstoqueSearch(); }catch{} },900);
-
-    // Banner click para recarregar quando quiser
-    const btnBanner=document.getElementById('sync-banner-btn-v33');
-    const closeBanner=document.getElementById('sync-banner-close-v33');
-    if(btnBanner){
-      btnBanner.onclick=()=>{ hideUpdateBanner(); location.reload(); };
-    }
-    if(closeBanner){
-      closeBanner.onclick=()=>{ hideUpdateBanner(); };
-    }
+    setTimeout(()=>{ let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } }, 600); }, 1000);
+    setTimeout(()=>{ initFirebaseRealtime(); }, 1500);
+    setInterval(()=>{ try{ renderLivreSearch(); }catch{} }, 900);
+    setInterval(()=>{ try{ renderEstoqueSearch(); }catch{} }, 900);
+    setInterval(()=>{ try{ ativarLupaPesquisaLivre(); }catch{} }, 1000);
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
   window.addEventListener('load', init);
