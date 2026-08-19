@@ -63,74 +63,172 @@ Error generating stack: `+u.message+`
   }
 
   // ===== MODAL ADICIONAR CÓDIGO INDIVIDUAL NO LIVRE =====
-  function renderLivreModal(){ /* removido - cadastro livre desativado */ }
+  function renderLivreModal(){ /* cadastro livre removido */ }
 
-  function renderConsumo(){
+      function renderConsumo(){
     const root=document.getElementById('consumo-root'); if(!root) return;
     const all=getAll();
-    root.innerHTML=`<div style="max-width:1440px; margin:0 auto; padding:16px;"><div style="display:flex; justify-content:space-between;"><button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white;">← Voltar</button><div style="font-size:11px; color:#10b981;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div></div>
-    <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;"><div style="color:white; font-weight:bold;">CONSUMO - Baixa somente do ESTOQUE real</div><div style="font-size:11px; color:#71717a; margin-top:4px;">Mostra apenas posições de estoque com o código (ignora Código Livre)</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><div style="display:flex; gap:8px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR NO ESTOQUE</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:12px;"><div id="c-nome" style="color:white; font-weight:bold; font-size:15px;"></div><div id="c-sku" style="color:#71717a; font-size:12px;"></div><div id="c-total-wrap" style="margin-top:8px;">Total em estoque: <span id="c-total" style="color:#10b981; font-size:22px; font-weight:bold;"></span></div><div id="c-locais" style="margin-top:12px; display:grid; gap:8px;"></div></div><div style="display:flex; gap:10px; margin-top:14px;"><input id="c-qtd" type="number" style="flex:1; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd para baixar"><button id="c-btn" style="flex:1; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold;">BAIXAR E SUBTRAIR DO ESTOQUE</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap;"></div></div></div>`;
+    root.innerHTML=`<div style="max-width:1440px; margin:0 auto; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;"><button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white;">← Voltar</button>
+        <div style="display:flex; gap:8px;"><button id="c-hist-btn" style="height:36px; padding:0 14px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold; font-size:12px;">📋 Histórico</button><div style="font-size:11px; color:#10b981; background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:6px 12px;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div></div>
+      </div>
+      <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;"><div style="color:white; font-weight:bold; font-size:16px;">📦 CONSUMO - Baixa do ESTOQUE</div><div id="c-ordem-badge" style="background:#232326; color:white; font-weight:bold; border-radius:9999px; padding:4px 12px; font-size:11px;">Sem ordem</div></div>
+        <div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0; display:grid; gap:10px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input id="c-ordem" style="width:200px; height:48px; background:#111; border:2px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; font-size:15px; font-weight:bold;" placeholder="Nº da ORDEM *">
+            <input id="c-cod" style="flex:1; min-width:200px; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="Código: AUT...">
+            <button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR ESTOQUE</button>
+          </div>
+          <div id="c-res"></div>
+        </div>
+        <div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:12px;">
+          <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+            <div><div id="c-nome" style="color:white; font-weight:bold; font-size:15px;"></div><div id="c-sku" style="color:#71717a; font-size:12px;"></div><div id="c-ordem-exibe" style="color:#fbbf24; font-size:13px; font-weight:bold; margin-top:4px;"></div></div>
+            <div style="text-align:right;"><div style="color:#71717a; font-size:10px;">TOTAL SELECIONADO</div><div id="c-total" style="color:#10b981; font-size:22px; font-weight:bold;">0</div><div id="c-total-info" style="color:#71717a; font-size:10px;"></div></div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:10px;"><button id="c-sel-all" style="height:28px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px; font-weight:bold;">Selecionar todos</button><button id="c-desel-all" style="height:28px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px;">Limpar</button></div>
+          <div id="c-locais" style="margin-top:12px; display:grid; gap:8px; max-height:40vh; overflow:auto; padding-right:4px;"></div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+          <input id="c-qtd" type="number" style="flex:1; min-width:140px; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd para baixar">
+          <button id="c-btn" style="flex:1; min-width:280px; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px;">BAIXAR DA LOCALIZAÇÃO SELECIONADA</button>
+        </div>
+        <div id="c-msg" style="display:none; margin-top:12px; padding:12px; border-radius:12px; white-space:pre-wrap; border:2px solid #10b981;"></div>
+        <div id="c-hist" style="display:none; margin-top:16px; background:#0e0e10; border:2px solid #fbbf24; border-radius:12px; padding:12px;"><div style="color:#fbbf24; font-weight:bold; margin-bottom:8px;">📋 HISTÓRICO DE BAIXAS COM ORDEM</div><div id="c-hist-list" style="display:grid; gap:8px; max-height:50vh; overflow:auto;"></div></div>
+      </div>
+    </div>`;
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
-    const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card'); let sel=null;
+    const inp=document.getElementById('c-cod'); const inpOrdem=document.getElementById('c-ordem'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card'); let sel=null;
+    function atualizarBadgeOrdem(){
+      const v=(inpOrdem.value||'').trim();
+      const badge=document.getElementById('c-ordem-badge'); const exibe=document.getElementById('c-ordem-exibe');
+      if(v){ badge.textContent='ORDEM: '+v; badge.style.background='#fbbf24'; badge.style.color='black'; if(exibe) exibe.textContent='📋 Ordem: '+v; }
+      else { badge.textContent='Sem ordem'; badge.style.background='#232326'; badge.style.color='white'; if(exibe) exibe.textContent=''; }
+    }
+    inpOrdem.addEventListener('input', atualizarBadgeOrdem);
+    function updateTotalSelecionado(){
+      if(!sel) return;
+      const selected=sel.achados.filter(a=>a.selecionado);
+      const totalSel=selected.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
+      document.getElementById('c-total').textContent=totalSel;
+      document.getElementById('c-total-info').textContent=`${selected.length} de ${sel.achados.length} locais • total ${sel.totalGeral} un`;
+      sel.achados.forEach(a=>{
+        const el=document.getElementById('c-loc-'+a.idx); if(!el) return;
+        el.style.borderColor=a.selecionado?'#10b981':'#2a2a30';
+        el.style.background=a.selecionado?'#0f1a15':'#151518';
+      });
+    }
     function selMat(achados, codBuscado){
       if(!achados.length){ card.style.display='none'; sel=null; return; }
-      const total = achados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
-      const primeiro = achados[0].item;
-      sel = { codigo: primeiro.codigo, sku: primeiro.codigo, nome: primeiro.descricao||primeiro.codigo, total: total, achados: achados, id: primeiro.materialId || primeiro.codigo };
+      const totalGeral=achados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
+      const primeiro=achados[0].item;
+      achados.forEach((a,i)=>{ a.idx=i; a.selecionado=false; });
+      sel={codigo:primeiro.codigo, sku:primeiro.codigo, nome:primeiro.descricao||primeiro.codigo, totalGeral:totalGeral, total:totalGeral, achados:achados, id:primeiro.materialId||primeiro.codigo};
       card.style.display='block';
       document.getElementById('c-nome').textContent=primeiro.descricao||primeiro.codigo;
       document.getElementById('c-sku').textContent=primeiro.codigo;
-      document.getElementById('c-total').textContent=total;
+      atualizarBadgeOrdem();
+      document.getElementById('c-total').textContent=0;
+      document.getElementById('c-total-info').textContent=`0 de ${achados.length} locais • total ${totalGeral} un`;
       const ruas=getR();
-      document.getElementById('c-locais').innerHTML = achados.map(a=>{
-        const ruaNome = a.ruaNome || (ruas[a.pos.ruaIndex]?.nome || `Rua ${String(a.pos.ruaIndex+1).padStart(2,'0')}`);
-        return `<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
-          <div><div style="color:#a78bfa; font-weight:bold; font-size:12px;">📍 ${ruaNome} • N${String(a.pos.nivel).padStart(2,'0')} • D${String(a.pos.div).padStart(2,'0')} • ${a.pos.posId}</div><div style="color:#71717a; font-size:11px; font-family:monospace;">${ruaNome} → N${a.pos.nivel} → D${a.pos.div} → ${a.pos.posId}</div></div>
-          <div style="background:#10b981; color:black; font-weight:bold; border-radius:9999px; padding:6px 12px; font-size:13px;">Qtd: ${a.item.qtd}</div>
-        </div>`;
+      document.getElementById('c-locais').innerHTML=achados.map(a=>{
+        const ruaNome=a.ruaNome|| (ruas[a.pos.ruaIndex]?.nome|| `Rua ${String(a.pos.ruaIndex+1).padStart(2,'0')}`);
+        return `<label id="c-loc-${a.idx}" style="background:#151518; border:2px solid #2a2a30; border-radius:12px; padding:10px; display:flex; gap:12px; align-items:center; cursor:pointer;">
+          <input type="checkbox" id="c-chk-${a.idx}" style="width:20px; height:20px; accent-color:#10b981;">
+          <div style="flex:1;"><div style="color:#a78bfa; font-weight:bold; font-size:12px;">📍 ${ruaNome} • N${String(a.pos.nivel).padStart(2,'0')} • D${String(a.pos.div).padStart(2,'0')} • ${a.pos.posId}</div><div style="color:#71717a; font-size:11px; font-family:monospace;">${ruaNome} → N${a.pos.nivel} → D${a.pos.div} → ${a.pos.posId}</div></div>
+          <div style="background:#0e0e10; border:1px solid #2a2a30; color:#10b981; font-weight:bold; border-radius:9999px; padding:6px 12px; font-size:13px;">Qtd: ${a.item.qtd}</div>
+        </label>`;
       }).join('');
-      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px; border-radius:8px;">✅ ${achados.length} local(is) no estoque com <b>${codBuscado}</b> — Total ${total} un</div>`;
+      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px; border-radius:8px;">✅ ${achados.length} local(is) no estoque com <b>${codBuscado}</b> — Total ${totalGeral} un</div>`;
+      achados.forEach(a=>{
+        const chk=document.getElementById('c-chk-'+a.idx); const label=document.getElementById('c-loc-'+a.idx);
+        if(chk){ chk.addEventListener('change',()=>{ a.selecionado=chk.checked; updateTotalSelecionado(); }); label.addEventListener('click',(e)=>{ if(e.target.tagName!=='INPUT'){ chk.checked=!chk.checked; a.selecionado=chk.checked; updateTotalSelecionado(); } }); }
+      });
+      document.getElementById('c-sel-all').onclick=()=>{ sel.achados.forEach(a=>{ a.selecionado=true; const c=document.getElementById('c-chk-'+a.idx); if(c) c.checked=true; }); updateTotalSelecionado(); };
+      document.getElementById('c-desel-all').onclick=()=>{ sel.achados.forEach(a=>{ a.selecionado=false; const c=document.getElementById('c-chk-'+a.idx); if(c) c.checked=false; }); updateTotalSelecionado(); };
     }
     function doBusca(){
       const codRaw=inp.value.trim(); if(!codRaw){ res.innerHTML='<span style="color:#fbbf24;">Digite um código</span>'; return; }
       const cod=codRaw.toLowerCase();
       const pos=getP(); const ruas=getR(); const achados=[];
-      for(const p of pos){
-        for(const it of (p.itens||[])){
-          const c = String(it.codigo||'').toLowerCase();
-          if(c===cod || c.includes(cod)){
-            const ruaNome = ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
-            achados.push({pos:p, item:it, ruaNome});
-          }
-        }
-      }
-      if(achados.length===0){
-        res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ <b>${codRaw}</b> não encontrado no ESTOQUE (só verificado nas ruas)</div>`;
-        card.style.display='none'; sel=null;
-      } else {
-        // ordenar por rua / nivel / div para facilitar
-        achados.sort((a,b)=> (a.pos.ruaIndex - b.pos.ruaIndex) || (a.pos.nivel - b.pos.nivel) || (a.pos.div - b.pos.div));
-        selMat(achados, codRaw);
-      }
+      for(const p of pos){ for(const it of (p.itens||[])){ const c=String(it.codigo||'').toLowerCase(); if(c===cod||c.includes(cod)){ const ruaNome=ruas[p.ruaIndex]?.nome|| `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p, item:it, ruaNome}); } } }
+      if(achados.length===0){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ <b>${codRaw}</b> não encontrado no ESTOQUE</div>`; card.style.display='none'; sel=null; }
+      else { achados.sort((a,b)=>(a.pos.ruaIndex-b.pos.ruaIndex)||(a.pos.nivel-b.pos.nivel)||(a.pos.div-b.pos.div)); selMat(achados, codRaw); }
     }
-    btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } });
+    btnB.onclick=doBusca; inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } }); inpOrdem.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.focus(); } });
+    function renderHist(){
+      const histDiv=document.getElementById('c-hist'); const list=document.getElementById('c-hist-list');
+      const allC=getC().slice().reverse();
+      if(!allC.length){ list.innerHTML='<div style="color:#71717a;">Nenhuma baixa ainda</div>'; histDiv.style.display='block'; return; }
+      list.innerHTML=allC.map(r=>{
+        const ordem = r.ordem ? `<span style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; padding:3px 10px; font-size:12px;">📋 ORDEM ${r.ordem}</span>` : '<span style="color:#71717a; font-size:11px;">Sem ordem</span>';
+        return `<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;"><div style="color:white; font-weight:bold;">${r.sku||r.codigo} - ${r.nome||''}</div>${ordem}</div>
+          <div style="color:#10b981; font-size:12px;">Qtd: <b>${r.qtd}</b> • ${r.data||''}</div>
+          <div style="color:#71717a; font-size:11px;">Locais: ${r.locais||r.log||''}</div>
+          <div style="color:#2a2a30; font-size:10px; font-family:monospace;">${(r.log||'').replace(/\n/g,'<br>')}</div>
+        </div>`;
+      }).join('');
+      histDiv.style.display='block';
+    }
+    document.getElementById('c-hist-btn').onclick=()=>{
+      const h=document.getElementById('c-hist');
+      if(h.style.display==='none'){ renderHist(); } else { h.style.display='none'; }
+    };
     document.getElementById('c-btn').onclick=()=>{
       try{
-        if(!sel){ alert('Busque'); return; }
+        const ordem=(document.getElementById('c-ordem').value||'').trim();
+        if(!ordem){ alert('Informe o número da ORDEM *'); document.getElementById('c-ordem').focus(); return; }
+        if(!sel){ alert('Busque um código primeiro'); return; }
+        const selecionados=sel.achados.filter(a=>a.selecionado);
+        if(selecionados.length===0){ alert('Selecione pelo menos 1 localização'); return; }
+        const totalSelecionado=selecionados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
         const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Qtd inválida'); return; }
-        if(q>sel.total){ alert('Saldo insuf: '+sel.total); return; }
+        if(q>totalSelecionado){ alert('Saldo insuficiente nos locais selecionados: '+totalSelecionado+' (você pediu '+q+')'); return; }
         let rest=q; let pos=getP(); let livre=getL(); let logs=[];
-        for(const p of pos){ if(rest<=0) break; for(let i=0;i<(p.itens||[]).length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.materialId)===String(sel.id) || String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); logs.push(`Rua ${p.ruaIndex} ${p.posId}: ${disp}->${disp-usar}`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } }
+        for(const selLoc of selecionados){
+          if(rest<=0) break;
+          for(const p of pos){
+            if(p.ruaIndex===selLoc.pos.ruaIndex && p.posId===selLoc.pos.posId){
+              for(let i=0;i<(p.itens||[]).length;i++){
+                if(rest<=0) break;
+                const it=p.itens[i];
+                if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase() || String(it.materialId)===String(sel.id)){
+                  const disp=Number(it.qtd)||0; if(disp<=0) continue;
+                  const usar=Math.min(disp, rest);
+                  const ruaNomeReal=getR()[p.ruaIndex]?.nome|| `Rua ${p.ruaIndex}`;
+                  logs.push(`${ruaNomeReal} ${p.posId}: ${disp}->${disp-usar} (-${usar})`);
+                  it.qtd=disp-usar; rest-=usar;
+                  if(it.qtd<=0){ p.itens.splice(i,1); i--; }
+                  break;
+                }
+              }
+            }
+          }
+        }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        // AGORA SOMENTE ESTOQUE - não baixa do livre
-        if(rest>0){ alert('Saldo insuficiente no ESTOQUE. Faltam '+rest+' (disponível apenas nas ruas)'); return; }
+        if(rest>0){ alert('Faltam '+rest); return; }
         localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre));
-        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
-        const reg={id:Date.now(), materialId:sel.id, sku:sel.sku, nome:sel.nome, qtd:q, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n')}; const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
-        const msg=document.getElementById('c-msg'); msg.textContent=`✅ BAIXADO ${q} de ${sel.sku}\n`+logs.join('\n')+`\nRecarregando...`; msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; setTimeout(()=>location.reload(),1500);
+        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+        const reg={id:Date.now(), materialId:sel.id, sku:sel.sku, nome:sel.nome, qtd:q, ordem:ordem, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), locais: selecionados.map(s=>`${s.ruaNome} ${s.pos.posId}`).join(', ')};
+        const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
+        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/consumos.json', {method:'POST', body:JSON.stringify(reg), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+        const msg=document.getElementById('c-msg');
+        msg.innerHTML=`<div style="font-size:18px; font-weight:bold; color:#10b981;">✅ BAIXA REALIZADA</div>
+        <div style="margin-top:10px; background:#fbbf24; color:black; font-weight:bold; padding:10px 14px; border-radius:10px; display:inline-block; font-size:15px;">📋 ORDEM Nº: ${ordem}</div>
+        <div style="margin-top:10px; color:white;">Produto: <b>${sel.sku}</b> - ${sel.nome}<br>Quantidade baixada: <b style="color:#10b981; font-size:18px;">${q} un</b></div>
+        <div style="margin-top:8px; font-size:12px; color:#a1a1aa;">Locais consumidos:<br>${logs.join('<br>')}</div>
+        <div style="margin-top:8px; font-size:11px; color:#71717a;">Data: ${new Date().toLocaleString('pt-BR')}</div>
+        <div style="margin-top:10px; color:#10b981;">Recarregando...</div>`;
+        msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)';
+        // atualiza historico automaticamente
+        try{ renderHist(); }catch{}
+        setTimeout(()=>location.reload(),2800);
       }catch(e){ alert(e.message); }
     };
   }
+
 
   function renderEstoqueSearch(){
     const interval=setInterval(()=>{
@@ -172,52 +270,20 @@ Error generating stack: `+u.message+`
   function inject(){
     try{
       let bar=null;
-      // procura a barra de topo - não depende mais de 'Livre'
-      for(const d of document.querySelectorAll('div')){ 
-        if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ 
-          bar=d; break; 
-        } 
-      }
-      // fallback: tenta achar pela classe dos botoes existentes
-      if(!bar){
-        const mainBtn = document.querySelector('main');
-        if(mainBtn){
-          const possible = document.querySelector('div.max-w-\[1440px\]');
-          if(possible) bar = possible.querySelector('div');
-        }
-      }
-      if(!bar){
-        // ultima tentativa: qualquer div que contenha botoes de filtro
-        const allDivs = Array.from(document.querySelectorAll('div')).filter(d=> (d.textContent||'').includes('Estoque') || (d.textContent||'').includes('Ruas'));
-        if(allDivs[0]) bar = allDivs[0].parentElement;
-      }
+      for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ bar=d; break; } }
       if(!bar) return false;
       if(bar.querySelector('#btn-v20-consumo')) return true;
       const btnConsumo=document.createElement('button');
       btnConsumo.id='btn-v20-consumo'; btnConsumo.textContent='📦 Consumo';
       btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;';
       btnConsumo.onclick=openConsumo;
-
       bar.appendChild(btnConsumo);
+      // esconder qualquer botao livre antigo
+      document.querySelectorAll('button').forEach(b=>{ const t=(b.textContent||'').toLowerCase(); if(t.includes('código livre')||t.includes('codigo livre')) b.style.display='none'; });
       renderEstoqueSearch();
       return true;
     }catch{ return false; }
   }
-
-  // esconder botões antigos de Código Livre do app original se ainda renderizarem
-  try{
-    const style = document.createElement('style');
-    style.textContent = `button:has-text('Livre'), [class*='livre'] { display:none !important; }`;
-    // fallback JS para esconder
-    setInterval(()=>{
-      document.querySelectorAll('button').forEach(b=>{
-        if((b.textContent||'').toLowerCase().includes('código livre') || (b.textContent||'').toLowerCase().includes('codigo livre')){
-          b.style.display='none';
-        }
-      });
-    },2000);
-  }catch{}
-
   function init(){
     setTimeout(()=>{
       let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } }, 600);
