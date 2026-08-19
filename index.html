@@ -177,34 +177,51 @@ Error generating stack: `+u.message+`
         const totalSel=selecionados.reduce((s,a)=>s+a.qtd,0);
         if(q>totalSel){ alert('Saldo insuficiente: '+totalSel); return; }
         let rest=q; let pos=getP(); let logs=[];
+        // FIX: comparação com trim e percorre TODOS os itens da posição (sem break prematuro)
+        const norm = (v)=> String(v||'').trim().toLowerCase();
+        const codigoBusca = norm(sel.codigo);
         for(const selLoc of selecionados){
           if(rest<=0) break;
-          const pIdx=pos.findIndex(p=>p.posId===selLoc.posId && p.ruaIndex===selLoc.ruaIndex);
+          const pIdx=pos.findIndex(p=> String(p.posId||'').trim()===String(selLoc.posId||'').trim() && Number(p.ruaIndex)===Number(selLoc.ruaIndex));
           if(pIdx===-1) continue;
           const p=pos[pIdx];
-          for(let i=0;i<(p.itens||[]).length;i++){
+          if(!p.itens) p.itens=[];
+          for(let i=0;i<p.itens.length;i++){
             if(rest<=0) break;
             const it=p.itens[i];
-            if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
+            if(norm(it.codigo)===codigoBusca || norm(it.codigo).includes(codigoBusca) || codigoBusca.includes(norm(it.codigo))){
               const disp=Number(it.qtd)||0; if(disp<=0) continue;
               const usar=Math.min(disp,rest);
               const rn=getR()[p.ruaIndex]?.nome||`Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
               logs.push(`${rn} ${p.posId}: ${disp}->${disp-usar} (-${usar})`);
-              it.qtd=disp-usar; rest-=usar;
+              it.qtd = disp - usar;
+              rest -= usar;
               if(it.qtd<=0){ p.itens.splice(i,1); i--; }
-              break;
+              // NÃO dá break aqui - continua consumindo outros lotes do mesmo código na mesma posição se precisar
             }
           }
         }
         if(rest>0){ alert('Erro: faltam '+rest+' un'); return; }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
+        // FIX CRÍTICO: salva e força o app React a enxergar a mudança
         localStorage.setItem(KP,JSON.stringify(pos));
+        localStorage.setItem('wms_final_posicoes',JSON.stringify(pos)); // redundância
         syncP(pos);
+        // tenta atualizar estado do React se exposto, senão força recarga do cache interno
+        try{
+          // dispara evento que o React pode ouvir, e também limpa debounce
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new CustomEvent('wms_posicoes_updated', {detail: pos}));
+          localStorage.setItem('wms_force_reload', String(Date.now()));
+        }catch(e){}
+
         const reg={id:Date.now(),materialId:sel.achados[0]?.item?.materialId||sel.codigo,sku:sel.codigo,codigo:sel.codigo,nome:sel.nome,qtd:q,ordem,tipo,obs,op:ordem,data:new Date().toLocaleString('pt-BR'),log:logs.join('\n'),locais:selecionados.map(s=>`${s.ruaNome} ${s.posId}`).join(', ')};
         const allC=getC(); allC.push(reg); localStorage.setItem(KC,JSON.stringify(allC)); syncC(allC);
         const msg=document.getElementById('c-msg');
         msg.innerHTML=`<div style="color:#10b981;font-weight:bold;font-size:14px;">✅ BAIXA COM OP REALIZADA - ESTOQUE ATUALIZADO EM TODOS DISPOSITIVOS</div><div style="margin-top:8px;"><span style="background:#fbbf24;color:black;font-weight:bold;border-radius:9999px;padding:4px 10px;font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px;color:#a1a1aa;margin-top:8px;">${logs.join('<br>')}</div>`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.border='1px solid #10b981';
+        // força atualização visual do estoque principal após 1.2s
+        setTimeout(()=>{ try{ localStorage.setItem(KP, JSON.stringify(pos)); }catch{} window.location.reload(); }, 1500);
         renderHist(document.getElementById('c-hist-filter').value||'');
         limpar();
         setTimeout(()=>{ msg.style.display='none'; },5000);
