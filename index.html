@@ -153,11 +153,50 @@ Error generating stack: `+u.message+`
     const root=document.getElementById('consumo-root'); if(!root) return;
     const all=getAll();
     root.innerHTML=`<div style="max-width:1440px; margin:0 auto; padding:16px;"><div style="display:flex; justify-content:space-between;"><button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white;">← Voltar</button><div style="font-size:11px; color:#10b981;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div></div>
-    <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;"><div style="color:white; font-weight:bold;">CONSUMO - Baixa que subtrai do estoque real</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><div style="display:flex; gap:8px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:1px solid #10b981; border-radius:10px; padding:12px;"><div id="c-nome" style="color:white; font-weight:bold;"></div><div id="c-sku" style="color:#71717a;"></div><div id="c-pos" style="color:#a78bfa; font-size:11px;"></div><div>Total: <span id="c-total" style="color:#10b981; font-size:20px; font-weight:bold;"></span></div></div><div style="display:flex; gap:10px; margin-top:10px;"><input id="c-qtd" type="number" style="flex:1; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd"><button id="c-btn" style="flex:1; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold;">BAIXAR E SUBTRAIR</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap;"></div></div></div>`;
+    <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;"><div style="color:white; font-weight:bold;">CONSUMO - Baixa somente do ESTOQUE real</div><div style="font-size:11px; color:#71717a; margin-top:4px;">Mostra apenas posições de estoque com o código (ignora Código Livre)</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><div style="display:flex; gap:8px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR NO ESTOQUE</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:12px;"><div id="c-nome" style="color:white; font-weight:bold; font-size:15px;"></div><div id="c-sku" style="color:#71717a; font-size:12px;"></div><div id="c-total-wrap" style="margin-top:8px;">Total em estoque: <span id="c-total" style="color:#10b981; font-size:22px; font-weight:bold;"></span></div><div id="c-locais" style="margin-top:12px; display:grid; gap:8px;"></div></div><div style="display:flex; gap:10px; margin-top:14px;"><input id="c-qtd" type="number" style="flex:1; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd para baixar"><button id="c-btn" style="flex:1; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold;">BAIXAR E SUBTRAIR DO ESTOQUE</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap;"></div></div></div>`;
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
     const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card'); let sel=null;
-    function selMat(m){ sel=m; card.style.display='block'; document.getElementById('c-nome').textContent=m.nome||m.codigo; document.getElementById('c-sku').textContent=m.sku+' Total '+m.total; document.getElementById('c-total').textContent=m.total; document.getElementById('c-pos').textContent=m.pos.map(p=>`Rua ${p.ri} ${p.posId} (${p.q})`).join(', '); res.innerHTML=`<div style="color:#10b981;">✅ ${m.sku}</div>`; }
-    function doBusca(){ const cod=inp.value.trim(); if(!cod){ res.innerHTML='Digite'; return; } const all=getAll(); let m=all.find(x=>String(x.codigo||'').toLowerCase()===cod.toLowerCase()||String(x.sku||'').toLowerCase()===cod.toLowerCase()); if(!m) m=all.find(x=>x.lc&&x.lc.includes(cod.toLowerCase())); if(m) selMat(m); else { res.innerHTML=`<div style="color:#ef4444;">❌ ${cod} não encontrado</div>`; card.style.display='none'; sel=null; } }
+    function selMat(achados, codBuscado){
+      if(!achados.length){ card.style.display='none'; sel=null; return; }
+      const total = achados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
+      const primeiro = achados[0].item;
+      sel = { codigo: primeiro.codigo, sku: primeiro.codigo, nome: primeiro.descricao||primeiro.codigo, total: total, achados: achados, id: primeiro.materialId || primeiro.codigo };
+      card.style.display='block';
+      document.getElementById('c-nome').textContent=primeiro.descricao||primeiro.codigo;
+      document.getElementById('c-sku').textContent=primeiro.codigo;
+      document.getElementById('c-total').textContent=total;
+      const ruas=getR();
+      document.getElementById('c-locais').innerHTML = achados.map(a=>{
+        const ruaNome = a.ruaNome || (ruas[a.pos.ruaIndex]?.nome || `Rua ${String(a.pos.ruaIndex+1).padStart(2,'0')}`);
+        return `<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div><div style="color:#a78bfa; font-weight:bold; font-size:12px;">📍 ${ruaNome} • N${String(a.pos.nivel).padStart(2,'0')} • D${String(a.pos.div).padStart(2,'0')} • ${a.pos.posId}</div><div style="color:#71717a; font-size:11px; font-family:monospace;">${ruaNome} → N${a.pos.nivel} → D${a.pos.div} → ${a.pos.posId}</div></div>
+          <div style="background:#10b981; color:black; font-weight:bold; border-radius:9999px; padding:6px 12px; font-size:13px;">Qtd: ${a.item.qtd}</div>
+        </div>`;
+      }).join('');
+      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px; border-radius:8px;">✅ ${achados.length} local(is) no estoque com <b>${codBuscado}</b> — Total ${total} un</div>`;
+    }
+    function doBusca(){
+      const codRaw=inp.value.trim(); if(!codRaw){ res.innerHTML='<span style="color:#fbbf24;">Digite um código</span>'; return; }
+      const cod=codRaw.toLowerCase();
+      const pos=getP(); const ruas=getR(); const achados=[];
+      for(const p of pos){
+        for(const it of (p.itens||[])){
+          const c = String(it.codigo||'').toLowerCase();
+          if(c===cod || c.includes(cod)){
+            const ruaNome = ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
+            achados.push({pos:p, item:it, ruaNome});
+          }
+        }
+      }
+      if(achados.length===0){
+        res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ <b>${codRaw}</b> não encontrado no ESTOQUE (só verificado nas ruas)</div>`;
+        card.style.display='none'; sel=null;
+      } else {
+        // ordenar por rua / nivel / div para facilitar
+        achados.sort((a,b)=> (a.pos.ruaIndex - b.pos.ruaIndex) || (a.pos.nivel - b.pos.nivel) || (a.pos.div - b.pos.div));
+        selMat(achados, codRaw);
+      }
+    }
     btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } });
     document.getElementById('c-btn').onclick=()=>{
       try{
@@ -167,8 +206,8 @@ Error generating stack: `+u.message+`
         let rest=q; let pos=getP(); let livre=getL(); let logs=[];
         for(const p of pos){ if(rest<=0) break; for(let i=0;i<(p.itens||[]).length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.materialId)===String(sel.id) || String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); logs.push(`Rua ${p.ruaIndex} ${p.posId}: ${disp}->${disp-usar}`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        if(rest>0){ for(const m of livre){ if(String(m.id)===String(sel.id) || String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; const usar=Math.min(s, rest); logs.push(`LIVRE: ${s}->${s-usar}`); m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; rest-=usar; break; } } }
-        if(rest>0){ alert('Faltam '+rest); return; }
+        // AGORA SOMENTE ESTOQUE - não baixa do livre
+        if(rest>0){ alert('Saldo insuficiente no ESTOQUE. Faltam '+rest+' (disponível apenas nas ruas)'); return; }
         localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre));
         try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
         const reg={id:Date.now(), materialId:sel.id, sku:sel.sku, nome:sel.nome, qtd:q, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n')}; const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
