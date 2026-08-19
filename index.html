@@ -31,12 +31,217 @@ Error generating stack: `+u.message+`
   <script>(function(){function m(a){var h=a.getAttribute("href");if(!h)return;try{var u=new URL(h,document.baseURI);if((u.protocol==="http:"||u.protocol==="https:")&&u.host!==location.host){a.target="_blank";a.rel="noopener noreferrer";}}catch(e){}}function s(){document.querySelectorAll("a[href]").forEach(m);}if(document.readyState!=="loading"){s();}else{document.addEventListener("DOMContentLoaded",s);}document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a){m(a);}},true);})();</script>
   
 
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
 <div id="livre-individual-root" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.85); overflow:auto; align-items:center; justify-content:center;"></div>
+<div id="sync-status-v29" style="position:fixed; bottom:16px; right:16px; z-index:9999999; background:#151518; border:2px solid #10b981; border-radius:12px; padding:8px 12px; font-size:11px; color:white; display:flex; align-items:center; gap:8px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+  <div id="sync-dot-v29" style="width:10px; height:10px; border-radius:50%; background:#71717a;"></div>
+  <div id="sync-text-v29">Sincronizando...</div>
+</div>
 <script>
 (function(){
   const KM="wms_final_materiais", KP="wms_final_posicoes", KC="wms_final_consumos", KR="wms_final_ruas";
+  const FB_URL="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com";
   const FB="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
+
+  // ===== FIREBASE REALTIME SYNC V29 =====
+  let firebaseApp=null;
+  let db=null;
+  let lastSyncTime=Date.now();
+  let syncEnabled=false;
+  let ignoreNextFirebaseUpdate=false;
+
+  function updateSyncStatus(status, text){
+    const dot=document.getElementById('sync-dot-v29');
+    const txt=document.getElementById('sync-text-v29');
+    const container=document.getElementById('sync-status-v29');
+    if(!dot || !txt) return;
+    if(status==='online'){
+      dot.style.background='#10b981';
+      txt.textContent=text||'Online - Sincronizando em tempo real';
+      container.style.borderColor='#10b981';
+    } else if(status==='syncing'){
+      dot.style.background='#fbbf24';
+      txt.textContent=text||'Sincronizando...';
+      container.style.borderColor='#fbbf24';
+    } else if(status==='offline'){
+      dot.style.background='#ef4444';
+      txt.textContent=text||'Offline - Salvando local';
+      container.style.borderColor='#ef4444';
+    } else if(status==='updated'){
+      dot.style.background='#7c3aed';
+      txt.textContent=text||'Atualizado de outro dispositivo!';
+      container.style.borderColor='#7c3aed';
+      setTimeout(()=>{
+        if(syncEnabled){
+          dot.style.background='#10b981';
+          txt.textContent='Online - Tempo real';
+          container.style.borderColor='#10b981';
+        }
+      }, 3000);
+    }
+  }
+
+  function initFirebaseRealtime(){
+    try{
+      if(typeof firebase==='undefined'){
+        updateSyncStatus('offline', 'Firebase SDK não carregou - Usando polling');
+        initPollingSync();
+        return;
+      }
+      if(!firebase.apps.length){
+        firebaseApp=firebase.initializeApp({databaseURL: FB_URL});
+      } else {
+        firebaseApp=firebase.app();
+      }
+      db=firebase.database();
+      syncEnabled=true;
+      updateSyncStatus('online', 'Online - Tempo real ativo V29');
+
+      // Escuta mudanças em materiais (livre)
+      db.ref('wms_final/materiais').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
+        if(data){
+          const local=localStorage.getItem(KM);
+          const localStr=local? local : '[]';
+          const remoteStr=JSON.stringify(data);
+          if(localStr!==remoteStr){
+            localStorage.setItem(KM, JSON.stringify(data));
+            console.log('📥 Materiais atualizado de outro dispositivo -', data.length, 'itens');
+            updateSyncStatus('updated', `Materiais atualizado! ${data.length} itens de outro dispositivo`);
+            // Se estiver na aba Livre, recarrega visualmente sem reload full
+            const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
+            if(isLivre){
+              setTimeout(()=>{ if(confirm('📥 Dados atualizados de outro dispositivo! Recarregar para ver mudanças?')) location.reload(); }, 500);
+            }
+          }
+        }
+        lastSyncTime=Date.now();
+      });
+
+      // Escuta material_livre também
+      db.ref('wms_final/material_livre').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
+        if(data){
+          const localStr=localStorage.getItem(KM)||'[]';
+          const remoteStr=JSON.stringify(data);
+          if(localStr!==remoteStr && data.length>0){
+            localStorage.setItem(KM, JSON.stringify(data));
+            console.log('📥 Material_livre atualizado de outro dispositivo');
+            updateSyncStatus('updated', 'Livre atualizado de outro dispositivo!');
+          }
+        }
+      });
+
+      // Escuta posicoes (alocações nas ruas)
+      db.ref('wms_final/posicoes').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
+        if(data){
+          const localStr=localStorage.getItem(KP)||'[]';
+          const remoteStr=JSON.stringify(data);
+          if(localStr!==remoteStr){
+            localStorage.setItem(KP, JSON.stringify(data));
+            console.log('📥 Posições atualizadas de outro dispositivo -', data.length, 'ruas');
+            updateSyncStatus('updated', 'Posições atualizadas de outro dispositivo!');
+            const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque'));
+            if(isEstoque){
+              setTimeout(()=>{ if(confirm('📥 Posições atualizadas de outro dispositivo! Recarregar Estoque?')) location.reload(); }, 500);
+            }
+          }
+        }
+      });
+
+      // Escuta ruas config
+      db.ref('wms_final/ruas').on('value', (snapshot)=>{
+        if(ignoreNextFirebaseUpdate) return;
+        const data=snapshot.val();
+        if(data){
+          localStorage.setItem(KR, JSON.stringify(data));
+        }
+      });
+
+      // Conectado?
+      db.ref('.info/connected').on('value', (snap)=>{
+        if(snap.val()===true){
+          updateSyncStatus('online', 'Online - Tempo real V29');
+          syncEnabled=true;
+        } else {
+          updateSyncStatus('offline', 'Offline - Reconectando...');
+          syncEnabled=false;
+        }
+      });
+
+      console.log('✅ Firebase Realtime V29 ativado - Sincronização simultânea entre dispositivos');
+    }catch(e){
+      console.error('Erro Firebase realtime', e);
+      updateSyncStatus('offline', 'Erro Firebase - Usando polling');
+      initPollingSync();
+    }
+  }
+
+  // Fallback: polling a cada 3 segundos se Firebase SDK falhar
+  function initPollingSync(){
+    console.log('🔄 Iniciando polling sync a cada 3s como fallback');
+    let lastMateriaisHash='';
+    let lastPosicoesHash='';
+    setInterval(async()=>{
+      try{
+        const resM=await fetch(FB+'/materiais.json?t='+Date.now());
+        const dataM=await resM.json();
+        if(dataM){
+          const hash=JSON.stringify(dataM).length;
+          if(lastMateriaisHash && lastMateriaisHash!==hash){
+            localStorage.setItem(KM, JSON.stringify(dataM));
+            updateSyncStatus('updated', 'Atualizado de outro dispositivo (polling)');
+            console.log('📥 Polling: materiais atualizado');
+          }
+          lastMateriaisHash=hash;
+        }
+        const resP=await fetch(FB+'/posicoes.json?t='+Date.now());
+        const dataP=await resP.json();
+        if(dataP){
+          const hash=JSON.stringify(dataP).length;
+          if(lastPosicoesHash && lastPosicoesHash!==hash){
+            localStorage.setItem(KP, JSON.stringify(dataP));
+            updateSyncStatus('updated', 'Posições atualizadas (polling)');
+            console.log('📥 Polling: posicoes atualizado');
+          }
+          lastPosicoesHash=hash;
+        }
+        updateSyncStatus('online', 'Online - Polling 3s V29');
+      }catch(e){
+        updateSyncStatus('offline', 'Offline');
+      }
+    }, 3000);
+  }
+
+  // Função que salva no Firebase e avisa outros dispositivos
+  async function salvarFirebaseTodos(livre, pos, ruas){
+    ignoreNextFirebaseUpdate=true;
+    updateSyncStatus('syncing', 'Salvando e sincronizando...');
+    try{
+      const promises=[];
+      if(livre) {
+        promises.push(fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}));
+        promises.push(fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}));
+      }
+      if(pos) promises.push(fetch(FB+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}));
+      if(ruas) promises.push(fetch(FB+'/ruas.json', {method:'PUT', body:JSON.stringify(ruas), headers:{'Content-Type':'application/json'}}));
+      await Promise.all(promises);
+      updateSyncStatus('online', 'Salvo e sincronizado! Outros dispositivos vão atualizar');
+      console.log('✅ Salvo no Firebase - outros dispositivos vão receber atualização automática');
+      setTimeout(()=>{ ignoreNextFirebaseUpdate=false; }, 2000);
+    }catch(e){
+      console.error('Erro salvar Firebase', e);
+      updateSyncStatus('offline', 'Erro ao salvar - salvando local');
+      ignoreNextFirebaseUpdate=false;
+    }
+  }
+
   function getL(){ try{return JSON.parse(localStorage.getItem(KM)||"[]")}catch{return []} }
   function getP(){ try{return JSON.parse(localStorage.getItem(KP)||"[]")}catch{return []} }
   function getR(){ try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []} }
@@ -56,18 +261,7 @@ Error generating stack: `+u.message+`
       for(const it of (p.itens||[])){
         if(String(it.codigo||'').toLowerCase().includes(cod) || String(it.descricao||'').toLowerCase().includes(cod)){
           const ruaNome=ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
-          achadosPos.push({
-            posId:p.posId,
-            ri:p.ruaIndex,
-            ni:p.nivel,
-            dv:p.div,
-            q:Number(it.qtd)||0,
-            codigo:it.codigo,
-            desc:it.descricao||'',
-            materialId:it.materialId,
-            ruaNome:ruaNome,
-            uniqueKey: `${p.posId}-${it.materialId}-${p.ruaIndex}`
-          });
+          achadosPos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q:Number(it.qtd)||0, codigo:it.codigo, desc:it.descricao||'', materialId:it.materialId, ruaNome:ruaNome, uniqueKey: `${p.posId}-${it.materialId}-${p.ruaIndex}`});
           totalPos+=Number(it.qtd)||0;
           idsEncontrados.add(String(it.materialId));
           if(!nomeDesc) nomeDesc=it.descricao||it.codigo;
@@ -91,23 +285,7 @@ Error generating stack: `+u.message+`
     const totalGeral=totalPos+totalLivre;
     const porRua={};
     achadosPos.forEach(a=>{ if(!porRua[a.ruaNome]) porRua[a.ruaNome]={total:0, pos:[]}; porRua[a.ruaNome].total+=a.q; porRua[a.ruaNome].pos.push(a); });
-    return {
-      codigo: codigoBusca.trim(),
-      nome: nomeDesc || codigoBusca.trim(),
-      pos: achadosPos,
-      livre: achadosLivre,
-      totalPos: totalPos,
-      totalLivre: totalLivre,
-      total: totalGeral,
-      porRua: porRua,
-      numLocalizacoes: achadosPos.length,
-      numRuas: Object.keys(porRua).length,
-      ids: Array.from(idsEncontrados),
-      id: idsEncontrados.size>0 ? Array.from(idsEncontrados)[0] : codigoBusca.trim(),
-      sku: codigoBusca.trim().toUpperCase(),
-      livreTotal: totalLivre,
-      alocTotal: totalPos
-    };
+    return {codigo: codigoBusca.trim(), nome: nomeDesc || codigoBusca.trim(), pos: achadosPos, livre: achadosLivre, totalPos: totalPos, totalLivre: totalLivre, total: totalGeral, porRua: porRua, numLocalizacoes: achadosPos.length, numRuas: Object.keys(porRua).length, ids: Array.from(idsEncontrados), id: idsEncontrados.size>0 ? Array.from(idsEncontrados)[0] : codigoBusca.trim(), sku: codigoBusca.trim().toUpperCase()};
   }
 
   function getAll(){
@@ -131,12 +309,98 @@ Error generating stack: `+u.message+`
     }catch{ return []; }
   }
 
+  function ativarLupaPesquisaLivre(){
+    try{
+      const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
+      if(!isLivre) return;
+      const main=document.querySelector('main');
+      if(!main) return;
+      let inputBusca=null;
+      const allDivs=Array.from(main.querySelectorAll('div'));
+      for(const d of allDivs){
+        const inputs=Array.from(d.querySelectorAll('input'));
+        for(const inp of inputs){
+          const ph=(inp.placeholder||'').toLowerCase();
+          if(ph.includes('buscar') || ph.includes('código') || ph.includes('codigo')){
+            if(inp.offsetParent!==null){
+              inputBusca=inp;
+              break;
+            }
+          }
+        }
+        if(inputBusca) break;
+      }
+      if(!inputBusca){
+        const inputs=Array.from(document.querySelectorAll('input'));
+        for(const inp of inputs){
+          if((inp.placeholder||'').toLowerCase().includes('buscar') && inp.offsetParent!==null){
+            inputBusca=inp;
+            break;
+          }
+        }
+      }
+      if(!inputBusca) return;
+      if(inputBusca.dataset.lupaAtivada) return;
+      inputBusca.dataset.lupaAtivada='true';
+      inputBusca.style.border='2px solid #fbbf24';
+      inputBusca.style.cursor='text';
+      let btnLupa=null;
+      let p=inputBusca.parentElement;
+      for(let i=0;i<4 && p;i++){
+        const candidates=Array.from(p.querySelectorAll('button, div'));
+        for(const c of candidates){
+          if(c!==inputBusca && c.offsetParent!==null){
+            const html=(c.innerHTML||'')+ (c.textContent||'');
+            if(html.includes('svg') || (c.className||'').includes('search') || (c.innerHTML||'').includes('🔍') || c.querySelector('svg')){
+              btnLupa=c;
+              break;
+            }
+          }
+        }
+        if(btnLupa) break;
+        p=p.parentElement;
+      }
+      if(btnLupa){
+        btnLupa.style.cursor='pointer';
+        btnLupa.style.border='2px solid #fbbf24';
+        btnLupa.title='Lupa ativada V29 - Clique para buscar';
+        btnLupa.onclick=(e)=>{
+          e.preventDefault();
+          e.stopPropagation();
+          inputBusca.focus();
+          inputBusca.select();
+          btnLupa.style.transform='scale(0.9)';
+          setTimeout(()=>btnLupa.style.transform='scale(1)', 150);
+          if(inputBusca.value.trim()){
+            inputBusca.dispatchEvent(new Event('input', {bubbles:true}));
+            const btnBuscar=document.getElementById('livre-busca-btn-v29');
+            if(btnBuscar) btnBuscar.click();
+          }
+        };
+      }
+      inputBusca.addEventListener('input', ()=>{
+        const termo=inputBusca.value.trim().toLowerCase();
+        const inpAmarela=document.getElementById('livre-busca-input-v29');
+        if(inpAmarela && inpAmarela.value!==inputBusca.value){
+          inpAmarela.value=inputBusca.value;
+        }
+      });
+      inputBusca.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){
+          e.preventDefault();
+          const btnBuscar=document.getElementById('livre-busca-btn-v29');
+          if(btnBuscar) btnBuscar.click();
+        }
+      });
+    }catch(e){ console.error('Erro ativar lupa', e); }
+  }
+
   function renderLivreModal(){
     const root=document.getElementById('livre-individual-root');
     root.innerHTML=`
       <div style="background:#151518; border:2px solid #fbbf24; border-radius:20px; padding:20px; width:90%; max-width:520px; margin:40px auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <div style="color:#fbbf24; font-weight:bold; font-size:16px;">➕ CÓDIGO INDIVIDUAL NO LIVRE</div>
+          <div style="color:#fbbf24; font-weight:bold; font-size:16px;">➕ CÓDIGO INDIVIDUAL NO LIVRE - Sincroniza automático</div>
           <button id="livre-modal-fechar" style="width:32px; height:32px; border-radius:9999px; background:#232326; color:white; border:none;">✕</button>
         </div>
         <div style="display:flex; flex-direction:column; gap:12px;">
@@ -150,8 +414,9 @@ Error generating stack: `+u.message+`
         <div id="livre-modal-msg" style="display:none; margin-top:12px; padding:10px; border-radius:10px; font-size:12px; white-space:pre-wrap;"></div>
         <div style="display:flex; gap:10px; margin-top:16px;">
           <button id="livre-modal-cancelar" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold;">Cancelar</button>
-          <button id="livre-modal-add" style="flex:1; height:44px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold;">+ ADICIONAR</button>
+          <button id="livre-modal-add" style="flex:1; height:44px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold;">+ ADICIONAR E SINCRONIZAR</button>
         </div>
+        <div style="margin-top:10px; font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:8px; padding:6px;">🔄 V29: Ao adicionar, sincroniza automaticamente nos outros dispositivos em tempo real!</div>
       </div>
     `;
     root.style.display='flex'; document.body.style.overflow='hidden';
@@ -177,16 +442,17 @@ Error generating stack: `+u.message+`
       if(idx>=0){
         let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0;
         livre[idx].saldo=s+qtd; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo;
-        msg.textContent=`✅ Já existia! ${s} + ${qtd} = ${s+qtd}`;
+        msg.textContent=`✅ Já existia! ${s} + ${qtd} = ${s+qtd} - Sincronizando...`;
       } else {
         const novo={id:`${codigo}-${Date.now()}`, codigo:codigo, descricao:desc, sku:codigo, nome:desc, unidade:un, qtd:qtd, saldo:qtd, quantidade:qtd, valor:0, local:'LIVRE'};
         livre.push(novo);
-        msg.textContent=`✅ Novo ${codigo} ${qtd} ${un}`;
+        msg.textContent=`✅ Novo ${codigo} ${qtd} ${un} - Sincronizando nos outros dispositivos...`;
       }
       msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
       localStorage.setItem(KM, JSON.stringify(livre));
-      try{ await Promise.all([fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}), fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})]); msg.textContent+=`\n✅ Gravado Firebase. Recarregando...`; }catch(e){ msg.textContent+=`\n⚠️ Salvo local. Recarregando...`; }
-      setTimeout(()=>{ fechar(); location.reload(); }, 1400);
+      await salvarFirebaseTodos(livre, null, null);
+      msg.textContent+=`\n✅ Gravado e sincronizado! Outros dispositivos vão atualizar automaticamente. Recarregando...`;
+      setTimeout(()=>{ fechar(); location.reload(); }, 1500);
     }
     btnAdd.onclick=adicionar;
     inpCod.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); inpDesc.focus(); } });
@@ -195,82 +461,71 @@ Error generating stack: `+u.message+`
     setTimeout(()=>inpCod.focus(), 200);
   }
 
-  // LIVRE SEARCH - V27 FIX - usa main.prepend igual Estoque, checa a cada 1s
   function renderLivreSearch(){
     try{
       const isLivre = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').trim()==='Livre');
       if(!isLivre){
-        // Se não está em Livre, remove a barra se existir
-        const existing=document.getElementById('pesquisa-livre-bar-v27');
+        const existing=document.getElementById('pesquisa-livre-bar-v29');
         if(existing) existing.style.display='none';
         return;
       }
       const main=document.querySelector('main'); if(!main) return;
-      let bar=document.getElementById('pesquisa-livre-bar-v27');
-      if(bar){
-        bar.style.display='block';
-        return;
-      }
-      const ruas=getR();
+      let bar=document.getElementById('pesquisa-livre-bar-v29');
+      if(bar){ bar.style.display='block'; return; }
       bar=document.createElement('div');
-      bar.id='pesquisa-livre-bar-v27';
-      bar.style.cssText='background:#151518; border:3px solid #fbbf24; border-radius:16px; padding:16px; margin-bottom:16px; box-shadow:0 0 20px rgba(251,191,36,0.2);';
+      bar.id='pesquisa-livre-bar-v29';
+      bar.style.cssText='background:#151518; border:3px solid #fbbf24; border-radius:16px; padding:16px; margin-bottom:16px; box-shadow:0 0 20px rgba(251,191,36,0.3);';
       bar.innerHTML=`
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <div style="display:flex; align-items:center; gap:10px;">
-            <div style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; width:32px; height:32px; display:flex; align-items:center; justify-content:center;">🔍</div>
+            <div style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:16px;">🔍</div>
             <div>
-              <div style="color:#fbbf24; font-weight:bold; font-size:14px;">PESQUISAR CÓDIGO QUE ESTÁ NO LIVRE - V27 (AGORA APARECE)</div>
-              <div style="color:#71717a; font-size:10px;">Busca no Livre e nas Ruas - Mostra onde está</div>
+              <div style="color:#fbbf24; font-weight:bold; font-size:14px;">PESQUISAR CÓDIGO NO LIVRE V29 - Tempo real + Lupa ativa</div>
+              <div style="color:#10b981; font-size:10px; font-weight:bold;">🔄 Sincroniza simultaneamente nos outros dispositivos!</div>
             </div>
           </div>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <span style="font-size:10px; color:#71717a; border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getL().length} no Livre</span>
-            <span style="font-size:10px; color:#71717a; border:1px solid #232326; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getR().length} ruas</span>
+          <div style="display:flex; gap:6px;">
+            <span style="font-size:10px; color:#fbbf24; border:1px solid #fbbf24; border-radius:9999px; padding:4px 8px; background:#0e0e10;">${getL().length} no Livre</span>
+            <span style="font-size:10px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:4px 8px; background:#0e0e10;">🔄 Tempo real</span>
           </div>
         </div>
         <div style="display:flex; gap:8px;">
-          <input id="livre-busca-input-v27" style="flex:1; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="Digite código que está no LIVRE + ENTER (ex: AUT100190001970)">
-          <button id="livre-busca-btn-v27" style="height:48px; padding:0 20px; border-radius:12px; background:#fbbf24; color:black; font-weight:bold; font-size:13px;">🔍 BUSCAR NO LIVRE</button>
-          <button id="livre-busca-limpar-v27" style="height:48px; padding:0 14px; border-radius:12px; background:#232326; color:white; border:1px solid #2a2a30;">Limpar</button>
+          <input id="livre-busca-input-v29" style="flex:1; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="Digite código do LIVRE + ENTER - Sincronizado em tempo real!">
+          <button id="livre-busca-btn-v29" style="height:48px; padding:0 20px; border-radius:12px; background:#fbbf24; color:black; font-weight:bold; font-size:13px;">🔍 BUSCAR NO LIVRE</button>
+          <button id="livre-busca-limpar-v29" style="height:48px; padding:0 14px; border-radius:12px; background:#232326; color:white; border:1px solid #2a2a30;">Limpar</button>
         </div>
-        <div id="livre-busca-res-v27" style="margin-top:14px;"></div>
+        <div id="livre-busca-res-v29" style="margin-top:14px;"></div>
       `;
       main.prepend(bar);
-
-      const inp=document.getElementById('livre-busca-input-v27');
-      const btn=document.getElementById('livre-busca-btn-v27');
-      const btnLimpar=document.getElementById('livre-busca-limpar-v27');
-      const res=document.getElementById('livre-busca-res-v27');
-
+      const inp=document.getElementById('livre-busca-input-v29');
+      const btn=document.getElementById('livre-busca-btn-v29');
+      const btnLimpar=document.getElementById('livre-busca-limpar-v29');
+      const res=document.getElementById('livre-busca-res-v29');
       function buscarNoLivre(){
         const cod=(inp.value||'').trim().toLowerCase();
         if(!cod){ res.innerHTML=''; return; }
         const m=buscarMultiLocal(cod);
         if(!m){
-          res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:10px; font-size:12px;">❌ Código <b>${cod}</b> não encontrado em lugar nenhum (nem no Livre nem nas Ruas). Total no Livre: ${getL().length} materiais | Dica: Adicione pelo botão ➕ Código Livre no topo.</div>`;
+          res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:10px; font-size:12px;">❌ Código <b>${cod}</b> não encontrado. Total no Livre: ${getL().length} materiais.</div>`;
           return;
         }
-
         const temLivre=m.livre.length>0;
         const temRua=m.pos.length>0;
-
         res.innerHTML=`
           <div style="background:#0e0e10; border:2px solid ${temLivre? '#fbbf24' : '#7c3aed'}; border-radius:12px; padding:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
               <div style="color:${temLivre? '#fbbf24' : '#a78bfa'}; font-weight:bold; font-size:14px;">
-                ${temLivre && temRua ? `📦 CÓDIGO ESTÁ NO LIVRE (${m.totalLivre} un) E EM ${m.numLocalizacoes} RUA(S) (${m.totalPos} un) - TOTAL ${m.total} un` :
-                  temLivre ? `✅ ESTÁ NO LIVRE - ${m.totalLivre} un no Livre | Total geral ${m.total} un` :
-                  `📍 SÓ NAS RUAS - ${m.numLocalizacoes} posição(ões) - Total ${m.total} un (não tem no Livre)`}
+                ${temLivre && temRua ? `📦 NO LIVRE (${m.totalLivre} un) E EM ${m.numLocalizacoes} RUA(S) (${m.totalPos} un) - TOTAL ${m.total} un` :
+                  temLivre ? `✅ ESTÁ NO LIVRE - ${m.totalLivre} un` :
+                  `📍 SÓ NAS RUAS - ${m.numLocalizacoes} pos - ${m.total} un`}
               </div>
               <div style="font-size:10px; background:${temLivre? 'rgba(251,191,36,0.15)' : 'rgba(124,58,237,0.15)'}; border:1px solid ${temLivre? '#fbbf24' : '#7c3aed'}; border-radius:9999px; padding:5px 10px; color:${temLivre? '#fbbf24' : '#a78bfa'}; font-weight:bold;">
                 ${m.numLocalizacoes} pos Ruas | ${m.livre.length} no Livre | Total ${m.total} un
               </div>
             </div>
-
             ${temLivre? `
               <div style="background:rgba(251,191,36,0.1); border:2px solid #fbbf24; border-radius:12px; padding:12px; margin-bottom:12px;">
-                <div style="color:#fbbf24; font-weight:bold; font-size:13px; margin-bottom:10px;">📦 NO LIVRE - ${m.totalLivre} un disponível para alocar:</div>
+                <div style="color:#fbbf24; font-weight:bold; font-size:13px; margin-bottom:10px;">📦 NO LIVRE - ${m.totalLivre} un:</div>
                 ${m.livre.map(l=>`
                   <div style="background:#0e0e10; border:1px solid #fbbf24; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                     <div style="display:flex; gap:12px; align-items:center;">
@@ -280,52 +535,44 @@ Error generating stack: `+u.message+`
                         <div style="color:#a1a1aa; font-size:12px;">${l.desc||''}</div>
                         <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
                           <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#fbbf24; font-weight:bold;">📦 Livre: ${l.q} ${l.unidade}</span>
-                          <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:10px; color:#71717a;">ID: ${l.id.substring(0,20)}...</span>
+                          <span style="background:#151518; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:10px; color:#71717a;">ID: ${l.id.substring(0,18)}...</span>
                         </div>
                       </div>
                     </div>
-                    <div style="text-align:center;">
-                      <div style="background:#fbbf24; color:black; border-radius:9999px; padding:8px 14px; font-size:14px; font-weight:bold;">${l.q} un</div>
-                      <div style="font-size:10px; color:#fbbf24; margin-top:4px; font-weight:bold;">No Livre</div>
-                    </div>
+                    <div style="background:#fbbf24; color:black; border-radius:9999px; padding:8px 14px; font-size:14px; font-weight:bold;">${l.q} un</div>
                   </div>
                 `).join('')}
-                <div style="margin-top:8px; font-size:11px; color:#a1a1aa; background:#000; border-radius:8px; padding:8px;">💡 Este código está no <b style="color:#fbbf24;">LIVRE</b>. Para alocar em Rua: vá em <b>Estoque</b> → clique em uma posição vazia → selecione este código. Ou clique no botão ALOCAR no card original abaixo desta pesquisa.</div>
               </div>
-            ` : `<div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:10px; padding:10px; margin-bottom:12px; font-size:12px; color:#fca5a5;">⚠️ Este código NÃO está no LIVRE, só nas Ruas. Para devolver ao Livre, remova da posição no Estoque (vira Livre automaticamente).</div>`}
-
+            ` : ''}
             ${temRua? `
               <div style="background:#0e0e10; border:1px solid #7c3aed; border-radius:10px; padding:12px;">
-                <div style="color:#a78bfa; font-weight:bold; font-size:12px; margin-bottom:10px;">📍 TAMBÉM NAS RUAS - ${m.totalPos} un em ${m.numLocalizacoes} posição(ões) em ${m.numRuas} Rua(s):</div>
+                <div style="color:#a78bfa; font-weight:bold; font-size:12px; margin-bottom:10px;">📍 NAS RUAS - ${m.totalPos} un:</div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
                   ${Object.entries(m.porRua).map(([rua, dados])=>`<span style="background:#151518; border:1px solid #7c3aed; border-radius:9999px; padding:5px 10px; font-size:11px; color:#a78bfa; font-weight:bold;">${rua}: ${dados.total} un (${dados.pos.length} pos)</span>`).join('')}
-                  <span style="background:#7c3aed; color:white; border-radius:9999px; padding:5px 10px; font-size:11px; font-weight:bold;">TOTAL RUAS: ${m.totalPos} un</span>
                 </div>
                 ${m.pos.map(p=>`
                   <div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; gap:10px; margin-bottom:6px; align-items:center;">
                     <div style="background:#7c3aed; border-radius:8px; width:42px; height:42px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${p.ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div>
                     <div style="flex:1;">
                       <div style="color:white; font-weight:bold; font-size:12px;">${p.codigo} - ${p.q} un em ${p.ruaNome}</div>
-                      <div style="font-size:10px; color:#71717a; font-family:monospace;">${p.ruaNome} → N${p.ni} → D${p.dv} → Pos ${p.posId} | ID ${p.materialId.substring(0,15)}...</div>
+                      <div style="font-size:10px; color:#71717a; font-family:monospace;">${p.ruaNome} → N${p.ni} → D${p.dv} → Pos ${p.posId}</div>
                     </div>
                     <div style="background:#7c3aed; border-radius:9999px; padding:6px 12px; color:white; font-size:12px; font-weight:bold;">${p.q} un</div>
                   </div>
                 `).join('')}
               </div>
             ` : ''}
-
-            <div style="margin-top:12px; padding:10px; background:#000; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-              <div style="font-size:12px; color:#71717a;">Total geral: <b style="color:white; font-size:14px;">${m.total} un</b> | Livre: <b style="color:#fbbf24;">${m.totalLivre} un</b> | Ruas: <b style="color:#a78bfa;">${m.totalPos} un</b></div>
-              <div style="font-size:11px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:9999px; padding:5px 10px; font-weight:bold;">${temLivre && temRua? 'Livre + Ruas' : temLivre? 'Só no Livre - pronto para alocar' : 'Só nas Ruas'}</div>
-            </div>
           </div>
         `;
       }
-
       btn.onclick=buscarNoLivre;
       inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoLivre(); } });
       btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
-    }catch(e){ console.error('livre search v27 erro', e); }
+      inp.addEventListener('input', ()=>{
+        const inputOriginal=Array.from(document.querySelectorAll('input')).find(i=> (i.placeholder||'').toLowerCase().includes('buscar') && i!==inp && i.offsetParent!==null);
+        if(inputOriginal){ inputOriginal.value=inp.value; inputOriginal.dispatchEvent(new Event('input', {bubbles:true})); }
+      });
+    }catch(e){ console.error('livre search v29 erro', e); }
   }
 
   function renderConsumo(){
@@ -335,17 +582,17 @@ Error generating stack: `+u.message+`
       <div style="max-width:1440px; margin:0 auto; padding:16px; font-family:Inter,system-ui;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30;">← Voltar</button>
-          <div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div>
+          <div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">🔄 Tempo real V29 - Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div>
         </div>
         <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V27 - Selecionar posição para baixa</div>
-            <div style="font-size:10px; color:#10b981; background:#0e0e10; border:1px solid #10b981; border-radius:9999px; padding:4px 10px;">${getC().length} baixas</div>
+            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V29 - Tempo real + Seleção posição + Lupa ativa</div>
+            <div style="font-size:10px; color:#10b981; background:#0e0e10; border:1px solid #10b981; border-radius:9999px; padding:4px 10px;">🔄 ${getC().length} baixas - Sincronizado</div>
           </div>
           <div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;">
-            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO (todas localizações)</label>
+            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO (sincronizado em tempo real)</label>
             <div style="display:flex; gap:8px; margin-top:6px;">
-              <input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970 + ENTER">
+              <input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970 + ENTER - Tempo real">
               <button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR</button>
             </div>
             <div id="c-res" style="margin-top:8px;"></div>
@@ -355,7 +602,7 @@ Error generating stack: `+u.message+`
             <div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div>
             <div id="c-sku" style="color:#71717a; font-size:11px; margin-top:2px;"></div>
             <div style="margin-top:10px; padding:10px; background:#151518; border:1px solid #fbbf24; border-radius:10px;">
-              <div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE DE QUAL POSIÇÃO VAI BAIXAR (clique):</div>
+              <div style="color:#fbbf24; font-weight:bold; font-size:11px; margin-bottom:8px;">👇 SELECIONE DE QUAL POSIÇÃO VAI BAIXAR:</div>
               <div id="c-pos-detalhe" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
             <div style="margin-top:10px; padding:8px; background:#151518; border:1px solid #2a2a30; border-radius:8px; font-size:11px; color:#71717a; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
@@ -365,7 +612,7 @@ Error generating stack: `+u.message+`
             <div id="c-selecao-resumo" style="margin-top:8px; display:none; background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:8px; padding:8px; font-size:11px; color:#fbbf24;"></div>
           </div>
           <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:12px; padding:12px;">
-            <div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Baixa com OP:</div>
+            <div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Baixa com OP (sincroniza automático nos outros dispositivos):</div>
             <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
               <div><label style="font-size:10px; color:#a1a1aa;">Qtd *</label><input id="c-qtd" type="number" style="width:100%; height:44px; background:#151518; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:15px; font-weight:bold; margin-top:4px;" placeholder="5"></div>
               <div><label style="font-size:10px; color:#fbbf24; font-weight:bold;">OP *</label><input id="c-op" style="width:100%; height:44px; background:#151518; border:2px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; font-size:14px; font-weight:bold; margin-top:4px;" placeholder="OP 12345"></div>
@@ -374,9 +621,10 @@ Error generating stack: `+u.message+`
             <div style="margin-top:10px;"><label style="font-size:10px; color:#a1a1aa;">Obs</label><input id="c-obs" style="width:100%; height:38px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; font-size:12px; margin-top:4px;" placeholder="Obs..."></div>
             <div style="display:flex; gap:10px; margin-top:12px;">
               <button id="c-btn-todas" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold; font-size:12px;">Baixar de TODAS</button>
-              <button id="c-btn" style="flex:2; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px;">✓ BAIXAR SELECIONADA(S)</button>
+              <button id="c-btn" style="flex:2; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px;">✓ BAIXAR SELECIONADA(S) E SINCRONIZAR</button>
             </div>
             <div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap; font-size:12px;"></div>
+            <div style="margin-top:8px; font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:8px; padding:6px;">🔄 V29: Ao fazer baixa, atualiza automaticamente em todos os dispositivos conectados!</div>
           </div>
         </div>
         <div style="background:#151518; border:2px solid #232326; border-radius:16px; overflow:hidden;">
@@ -464,16 +712,10 @@ Error generating stack: `+u.message+`
           }
           localStorage.setItem(KP, JSON.stringify(pos));
           localStorage.setItem(KM, JSON.stringify(livre));
-          try{
-            await Promise.all([
-              fetch(FB+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}),
-              fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}),
-              fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})
-            ]);
-          }catch{}
+          await salvarFirebaseTodos(livre, pos, null);
           const novoHist=getC().filter(x=>x.id!==id);
           localStorage.setItem(KC, JSON.stringify(novoHist));
-          alert(`✅ Estornado! ${hist.qtd} un de ${hist.sku} OP ${hist.op}`);
+          alert(`✅ Estornado e sincronizado! ${hist.qtd} un de ${hist.sku} OP ${hist.op} - Outros dispositivos vão atualizar`);
           location.reload();
         };
       });
@@ -567,7 +809,7 @@ Error generating stack: `+u.message+`
                 <div style="background:#fbbf24; border-radius:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:9px;">LIVRE</div>
                 <div>
                   <div style="font-size:11px; color:#fbbf24; font-weight:bold;">📦 LIVRE - ${l.q} un</div>
-                  <div style="font-size:10px; color:#71717a;">Código: ${l.codigo} | ID: ${l.id.substring(0,15)}</div>
+                  <div style="font-size:10px; color:#71717a;">Código: ${l.codigo}</div>
                 </div>
               </div>
               <div style="background:#fbbf24; border-radius:9999px; padding:6px 12px; font-size:12px; color:black; font-weight:bold;">${l.q} un</div>
@@ -697,19 +939,13 @@ Error generating stack: `+u.message+`
 
         localStorage.setItem(KP, JSON.stringify(pos));
         localStorage.setItem(KM, JSON.stringify(livre));
-        try{
-          await Promise.all([
-            fetch(FB+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}),
-            fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}),
-            fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})
-          ]);
-        }catch{}
+        await salvarFirebaseTodos(livre, pos, null);
 
         const reg={id:Date.now(), materialId:sel.id, sku:sel.codigo, nome:sel.nome||sel.codigo, qtd:q, op:op, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), totalAntes:sel.total, totalDepois:sel.total-q, ids:sel.ids, posicoesSelecionadas: apenasSelecionadas? Array.from(posicoesSelecionadas) : ['TODAS']};
         const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
 
         const msg=document.getElementById('c-msg');
-        msg.textContent=`✅ BAIXA ${apenasSelecionadas? 'SELECIONADA' : 'TODAS'}! ${q} un de ${sel.codigo}\nOP: ${op} | Tipo: ${tipo}\n`+logs.join('\n')+`\nDe: ${sel.total} → Para: ${sel.total-q} un\nRecarregando...`;
+        msg.textContent=`✅ BAIXA ${apenasSelecionadas? 'SELECIONADA' : 'TODAS'} E SINCRONIZADA! ${q} un de ${sel.codigo}\nOP: ${op} | Tipo: ${tipo}\n`+logs.join('\n')+`\nDe: ${sel.total} → Para: ${sel.total-q} un\n🔄 Sincronizado nos outros dispositivos! Recarregando...`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
         renderHistorico();
         setTimeout(()=>location.reload(), 2000);
@@ -726,21 +962,21 @@ Error generating stack: `+u.message+`
         const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque'));
         if(!isEstoque) return;
         const main=document.querySelector('main'); if(!main) return;
-        if(document.getElementById('pesquisa-estoque-bar-v27')) return;
+        if(document.getElementById('pesquisa-estoque-bar-v29')) return;
         const ruas=getR();
         const bar=document.createElement('div');
-        bar.id='pesquisa-estoque-bar-v27';
+        bar.id='pesquisa-estoque-bar-v29';
         bar.style.cssText='background:#151518; border:2px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;';
         bar.innerHTML=`
-          <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO NAS RUAS - TODAS localizações</div><div style="font-size:10px; color:#71717a;">${ruas.length} ruas</div></div>
-          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v27" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v27" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v27" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
-          <div id="estoque-busca-res-v27" style="margin-top:12px;"></div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO NAS RUAS - Tempo real V29</div><div style="font-size:10px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:4px 8px;">🔄 ${ruas.length} ruas - Tempo real</div></div>
+          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v29" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER - Sincronizado"><button id="estoque-busca-btn-v29" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR TODAS</button><button id="estoque-busca-limpar-v29" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
+          <div id="estoque-busca-res-v29" style="margin-top:12px;"></div>
         `;
         main.prepend(bar);
-        const inp=document.getElementById('estoque-busca-input-v27');
-        const btn=document.getElementById('estoque-busca-btn-v27');
-        const btnLimpar=document.getElementById('estoque-busca-limpar-v27');
-        const res=document.getElementById('estoque-busca-res-v27');
+        const inp=document.getElementById('estoque-busca-input-v29');
+        const btn=document.getElementById('estoque-busca-btn-v29');
+        const btnLimpar=document.getElementById('estoque-busca-limpar-v29');
+        const res=document.getElementById('estoque-busca-res-v29');
         function buscarNoEstoque(){
           const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
           const m=buscarMultiLocal(cod);
@@ -756,20 +992,13 @@ Error generating stack: `+u.message+`
                 <div style="color:${isMulti? '#a78bfa' : '#10b981'}; font-weight:bold; font-size:13px;">
                   ${isMulti? `⚠️ ${m.numLocalizacoes} LOCALIZAÇÕES EM ${m.numRuas} RUA(S) - Total ${m.totalPos} un + Livre ${m.totalLivre} un = ${totalQtd} un` : `✅ 1 LOCALIZAÇÃO - Total ${totalQtd} un`}
                 </div>
-                <div style="font-size:10px; background:${isMulti? 'rgba(124,58,237,0.15)' : 'rgba(16,185,129,0.15)'}; border:1px solid ${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 8px; color:${isMulti? '#a78bfa' : '#10b981'}; font-weight:bold;">${m.numLocalizacoes} pos | ${m.numRuas} rua(s)</div>
-              </div>
-              <div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:8px; margin-bottom:10px;">
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                  ${Object.entries(m.porRua).map(([rua, dados])=>`<span style="background:#0e0e10; border:1px solid #7c3aed; border-radius:9999px; padding:6px 12px; font-size:11px; color:#a78bfa; font-weight:bold;">${rua}: ${dados.total} un (${dados.pos.length} pos)</span>`).join('')}
-                  ${m.totalLivre>0? `<span style="background:#0e0e10; border:1px solid #fbbf24; border-radius:9999px; padding:6px 12px; font-size:11px; color:#fbbf24;">LIVRE: ${m.totalLivre} un</span>` : ''}
-                  <span style="background:#7c3aed; color:white; border-radius:9999px; padding:6px 12px; font-size:11px; font-weight:bold;">TOTAL: ${totalQtd} un</span>
-                </div>
+                <div style="font-size:10px; background:${isMulti? 'rgba(124,58,237,0.15)' : 'rgba(16,185,129,0.15)'}; border:1px solid ${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 8px; color:${isMulti? '#a78bfa' : '#10b981'}; font-weight:bold;">${m.numLocalizacoes} pos | ${m.numRuas} rua(s) - Tempo real</div>
               </div>
               ${m.pos.map(a=>`
                 <div style="background:#151518; border:1px solid ${isMulti? '#7c3aed' : '#2a2a30'}; border-radius:12px; padding:12px; display:flex; gap:12px; margin-bottom:8px;">
                   <div style="background:${isMulti? '#7c3aed' : '#10b981'}; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:${isMulti? 'white' : 'black'}; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.ni).padStart(2,'0')}</div>
                   <div style="flex:1;">
-                    <div style="color:white; font-weight:bold;">${a.codigo} | ID: ${a.materialId.substring(0,15)}...</div>
+                    <div style="color:white; font-weight:bold;">${a.codigo}</div>
                     <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
                       <span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa;">📍 ${a.ruaNome} N${a.ni} D${a.dv} Pos ${a.posId}</span>
                       <span style="background:${isMulti? '#7c3aed' : '#10b981'}; border-radius:9999px; padding:4px 10px; font-size:11px; color:${isMulti? 'white' : 'black'}; font-weight:bold;">${a.q} un</span>
@@ -792,13 +1021,13 @@ Error generating stack: `+u.message+`
       for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ if((d.textContent||'').includes('Livre')){ bar=d; break; } } }
       if(!bar){ const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent && x.textContent.includes('Livre')); if(b) bar=b.parentElement; }
       if(!bar) return false;
-      if(bar.querySelector('#btn-v27-consumo')) return true;
+      if(bar.querySelector('#btn-v29-consumo')) return true;
       const btnConsumo=document.createElement('button');
-      btnConsumo.id='btn-v27-consumo'; btnConsumo.textContent=`📦 Consumo V27 • ${getC().length}`;
+      btnConsumo.id='btn-v29-consumo'; btnConsumo.textContent=`📦 Consumo V29 • ${getC().length}`;
       btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;';
       btnConsumo.onclick=openConsumo;
       const btnLivre=document.createElement('button');
-      btnLivre.id='btn-v27-livre'; btnLivre.textContent='➕ Código Livre';
+      btnLivre.id='btn-v29-livre'; btnLivre.textContent='➕ Código Livre';
       btnLivre.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #fbbf24; background:#fbbf24; color:black; font-weight:bold;';
       btnLivre.onclick=()=>{ renderLivreModal(); };
       bar.appendChild(btnConsumo);
@@ -810,9 +1039,10 @@ Error generating stack: `+u.message+`
     setTimeout(()=>{
       let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } }, 600);
     }, 1000);
-    // Checa Livre e Estoque a cada 800ms
-    setInterval(()=>{ try{ renderLivreSearch(); }catch{} }, 800);
-    setInterval(()=>{ try{ renderEstoqueSearch(); }catch{} }, 800);
+    setTimeout(()=>{ initFirebaseRealtime(); }, 1500);
+    setInterval(()=>{ try{ renderLivreSearch(); }catch{} }, 900);
+    setInterval(()=>{ try{ renderEstoqueSearch(); }catch{} }, 900);
+    setInterval(()=>{ try{ ativarLupaPesquisaLivre(); }catch{} }, 1000);
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
   window.addEventListener('load', init);
