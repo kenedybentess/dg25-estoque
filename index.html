@@ -33,13 +33,66 @@ Error generating stack: `+u.message+`
 
 <div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
 <div id="livre-individual-root" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.85); overflow:auto; display:none; align-items:center; justify-content:center;"></div>
+<div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
+<div id="livre-individual-root" style="display:none;"></div>
 <script>
 (function(){
   const KM="wms_final_materiais", KP="wms_final_posicoes", KC="wms_final_consumos", KR="wms_final_ruas";
+  const FB_BASE="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
   function getL(){ try{return JSON.parse(localStorage.getItem(KM)||"[]")}catch{return []} }
   function getP(){ try{return JSON.parse(localStorage.getItem(KP)||"[]")}catch{return []} }
   function getR(){ try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []} }
   function getC(){ try{return JSON.parse(localStorage.getItem(KC)||"[]")}catch{return []} }
+
+  // SINCRONIZAÇÃO FIREBASE - HISTÓRICO EM TODOS DISPOSITIVOS
+  function syncConsumosToFirebase(allC){
+    try{
+      fetch(FB_BASE+'/consumos.json', {method:'PUT', body:JSON.stringify(allC), headers:{'Content-Type':'application/json'}}).catch(()=>{});
+      // também limpa o antigo formato com POSTs
+      fetch(FB_BASE+'/consumos_backup.json', {method:'PUT', body:JSON.stringify({ultimo_sync: new Date().toISOString()}), headers:{'Content-Type':'application/json'}}).catch(()=>{});
+    }catch{}
+  }
+  async function fetchConsumosFromFirebase(){
+    try{
+      const resp = await fetch(FB_BASE+'/consumos.json');
+      if(!resp.ok) return null;
+      const data = await resp.json();
+      if(!data) return [];
+      // data pode ser array ou objeto com chaves push
+      let arr=[];
+      if(Array.isArray(data)){ arr=data; }
+      else if(typeof data==='object'){
+        // se for objeto { -Nxxx: {...}, ... } converter para array
+        arr=Object.values(data).filter(v=>v && typeof v==='object' && v.id);
+        // se for objeto vazio ou com propriedades não array, tentar filtrar
+        if(arr.length===0 && data.length===undefined){
+          // pode ser que tenha sido salvo como objeto com índices numéricos
+          const vals=Object.values(data);
+          if(vals.length>0 && vals[0] && vals[0].sku) arr=vals;
+        }
+      }
+      // ordenar por id/data e salvar local
+      if(arr.length>0){
+        // remover duplicatas por id
+        const map=new Map();
+        for(const r of arr){ if(r && r.id) map.set(String(r.id), r); }
+        const dedup=Array.from(map.values());
+        localStorage.setItem(KC, JSON.stringify(dedup));
+        return dedup;
+      }
+      return arr;
+    }catch(e){ return null; }
+  }
+
+  // ao carregar, tenta sincronizar histórico do Firebase
+  (async()=>{
+    try{
+      const fb = await fetchConsumosFromFirebase();
+      if(fb && fb.length>0){
+        console.log('[HISTÓRICO] Sincronizado do Firebase:', fb.length, 'registros');
+      }
+    }catch{}
+  })();
 
   function getAll(){
     try{
@@ -61,7 +114,7 @@ Error generating stack: `+u.message+`
     }catch{ return []; }
   }
 
-  function renderLivreModal(){ /* cadastro livre removido - não usa mais */ }
+  function renderLivreModal(){}
 
   function renderConsumo(){
     const root=document.getElementById('consumo-root'); if(!root) return;
@@ -69,10 +122,12 @@ Error generating stack: `+u.message+`
     root.innerHTML=`<div style="max-width:1100px; margin:0 auto; padding:16px; background:#0e0e10; min-height:100vh;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
         <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:none; cursor:pointer;">← Voltar</button>
-        <div style="font-size:12px; color:#71717a;">Total em estoque: <span style="color:#10b981; font-weight:bold;">${all.reduce((s,m)=>s+(m.total||0),0)} un</span></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="c-sync-fb" style="height:32px; padding:0 12px; border-radius:9999px; background:#3b82f6; color:white; font-size:11px; border:none; cursor:pointer;">🔄 Sincronizar</button>
+          <div style="font-size:12px; color:#71717a;">Total em estoque: <span style="color:#10b981; font-weight:bold;">${all.reduce((s,m)=>s+(m.total||0),0)} un</span></div>
+        </div>
       </div>
 
-      <!-- PESQUISAR CODIGO -->
       <div style="background:#151518; border:1px solid #10b981; border-radius:16px; padding:14px; margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; color:#fbbf24; font-size:11px; font-weight:bold;">
           <span style="width:8px; height:8px; background:#3b82f6; border-radius:50%; display:inline-block;"></span>
@@ -86,7 +141,6 @@ Error generating stack: `+u.message+`
         <div id="c-locais-lista" style="margin-top:12px; display:grid; gap:8px;"></div>
       </div>
 
-      <!-- BAIXA COM OP -->
       <div style="background:#151518; border:1px solid #2a2a30; border-radius:16px; padding:16px; margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px; color:white; font-size:13px; font-weight:bold;">
           <span style="background:#232326; border-radius:6px; padding:2px 6px; font-size:12px;">📦</span> Baixa com OP:
@@ -94,7 +148,7 @@ Error generating stack: `+u.message+`
         <div style="display:grid; grid-template-columns: 120px 1fr 160px; gap:10px; margin-bottom:12px;">
           <div>
             <label style="font-size:10px; color:#71717a; font-weight:bold;">Qtd *</label>
-            <input id="c-qtd" type="number" style="width:100%; height:42px; background:#0e0e10; border:1px solid #10b981; color:white; border-radius:8px; padding:0 12px; margin-top:4px;" placeholder="5" value="5">
+            <input id="c-qtd" type="number" style="width:100%; height:42px; background:#0e0e10; border:1px solid #10b981; color:white; border-radius:8px; padding:0 12px; margin-top:4px;" placeholder="5">
           </div>
           <div>
             <label style="font-size:10px; color:#fbbf24; font-weight:bold;">OP *</label>
@@ -119,15 +173,15 @@ Error generating stack: `+u.message+`
         <div id="c-msg" style="display:none; margin-top:12px; padding:12px; border-radius:10px; white-space:pre-wrap;"></div>
       </div>
 
-      <!-- HISTORICO -->
       <div style="background:#151518; border:1px solid #2a2a30; border-radius:16px; padding:14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-          <div style="display:flex; align-items:center; gap:8px;"><span style="font-size:13px;">📋</span><span style="color:white; font-weight:bold; font-size:13px;">HISTÓRICO</span><span id="c-hist-count" style="color:#71717a; font-size:11px;">0 registros</span></div>
+          <div style="display:flex; align-items:center; gap:8px;"><span style="font-size:13px;">📋</span><span style="color:white; font-weight:bold; font-size:13px;">HISTÓRICO</span><span id="c-hist-count" style="color:#71717a; font-size:11px;">0 registros</span><span style="background:#3b82f6; color:white; font-size:9px; padding:2px 6px; border-radius:9999px;">SYNC TODOS DISPOSITIVOS</span></div>
           <div style="display:flex; gap:8px;">
             <input id="c-hist-filter" style="height:32px; width:180px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:9999px; padding:0 12px; font-size:11px;" placeholder="Buscar OP ou código...">
             <button id="c-hist-limpar" style="height:32px; padding:0 14px; border-radius:9999px; background:#232326; color:white; font-size:11px; border:none; cursor:pointer;">Limpar</button>
           </div>
         </div>
+        <div id="c-hist-loading" style="color:#3b82f6; font-size:11px; text-align:center; padding:10px; display:none;">🔄 Sincronizando histórico do Firebase...</div>
         <div style="overflow:auto;">
           <table style="width:100%; border-collapse:collapse; font-size:11px;">
             <thead><tr style="color:#71717a; font-size:10px; text-align:left; border-bottom:1px solid #2a2a30;"><th style="padding:8px 6px; font-weight:normal;">Data</th><th style="padding:8px 6px; font-weight:normal;">Código</th><th style="padding:8px 6px; font-weight:normal;">Qtd</th><th style="padding:8px 6px; font-weight:normal;">OP</th><th style="padding:8px 6px; font-weight:normal;">Localização</th><th style="padding:8px 6px; font-weight:normal;">Obs</th><th style="padding:8px 6px; font-weight:normal;">Ação</th></tr></thead>
@@ -139,15 +193,28 @@ Error generating stack: `+u.message+`
     </div>`;
 
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
-    const inp=document.getElementById('c-cod'); const inpOrdem=document.getElementById('c-ordem'); const inpQtd=document.getElementById('c-qtd'); const inpObs=document.getElementById('c-obs'); const inpTipo=document.getElementById('c-tipo');
+    const inp=document.getElementById('c-cod'); 
     const res=document.getElementById('c-res'); const locaisDiv=document.getElementById('c-locais-lista');
     let sel=null; let selLocais=[];
+
+    function limparCamposConsumo(){
+      try{
+        document.getElementById('c-cod').value='';
+        document.getElementById('c-ordem').value='';
+        document.getElementById('c-qtd').value='';
+        document.getElementById('c-obs').value='';
+        document.getElementById('c-tipo').selectedIndex=0;
+        document.getElementById('c-res').innerHTML='';
+        document.getElementById('c-locais-lista').innerHTML='';
+        sel=null; selLocais=[];
+        setTimeout(()=>{ try{ document.getElementById('c-cod').focus(); }catch{} },100);
+      }catch(e){}
+    }
 
     function buscar(){
       const codRaw=inp.value.trim(); if(!codRaw){ res.innerHTML='<span style="color:#fbbf24; font-size:11px;">Digite um código</span>'; return; }
       const cod=codRaw.toLowerCase();
       const pos=getP(); const ruas=getR(); const achados=[];
-      // BUSCA EM TODAS AS POSICOES MESMO COM IDS DIFERENTES - por codigo exato ou contém
       for(const p of pos){
         for(const it of (p.itens||[])){
           const c=String(it.codigo||'').toLowerCase().trim();
@@ -185,8 +252,16 @@ Error generating stack: `+u.message+`
     document.getElementById('c-buscar').onclick=buscar;
     inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); buscar(); } });
 
-    function renderHist(filtro=''){
-      const tbody=document.getElementById('c-hist-tbody'); const count=document.getElementById('c-hist-count'); const empty=document.getElementById('c-hist-empty');
+    async function renderHist(filtro=''){
+      const tbody=document.getElementById('c-hist-tbody'); const count=document.getElementById('c-hist-count'); const empty=document.getElementById('c-hist-empty'); const loading=document.getElementById('c-hist-loading');
+      // tenta sincronizar do Firebase antes de renderizar
+      loading.style.display='block';
+      try{
+        const fb = await fetchConsumosFromFirebase();
+        if(fb){ console.log('Firebase sync ok', fb.length); }
+      }catch{}
+      loading.style.display='none';
+
       let allC=getC().slice().reverse();
       const f=filtro.toLowerCase();
       if(f){ allC=allC.filter(r=> String(r.ordem||'').toLowerCase().includes(f) || String(r.sku||r.codigo||'').toLowerCase().includes(f)); }
@@ -225,16 +300,23 @@ Error generating stack: `+u.message+`
           if(restaurado===0 && pos.length>0){ if(!pos[0].itens) pos[0].itens=[]; pos[0].itens.push({codigo:reg.sku, descricao:reg.nome, qtd:Number(reg.qtd), materialId:reg.materialId}); restaurado+=Number(reg.qtd); }
         }
         localStorage.setItem(KP, JSON.stringify(pos));
-        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+        try{ fetch(FB_BASE+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
         const novos=allC.filter(r=>String(r.id)!==String(id));
         localStorage.setItem(KC, JSON.stringify(novos));
+        syncConsumosToFirebase(novos);
         alert(`✅ ESTORNO OK - ${restaurado} un devolvidos`);
         renderHist(document.getElementById('c-hist-filter').value||'');
       }catch(e){ alert('Erro: '+e.message); }
     };
 
     document.getElementById('c-hist-filter').addEventListener('input', e=>{ renderHist(e.target.value); });
-    document.getElementById('c-hist-limpar').onclick=()=>{ if(confirm('Limpar todo histórico?')){ localStorage.setItem(KC, JSON.stringify([])); renderHist(); } };
+    document.getElementById('c-hist-limpar').onclick=()=>{ if(confirm('Limpar todo histórico em TODOS os dispositivos?')){ const vazio=[]; localStorage.setItem(KC, JSON.stringify(vazio)); syncConsumosToFirebase(vazio); renderHist(); } };
+    document.getElementById('c-sync-fb').onclick=async()=>{ 
+      const btn=document.getElementById('c-sync-fb'); btn.textContent='🔄 Sincronizando...';
+      await fetchConsumosFromFirebase(); 
+      renderHist(document.getElementById('c-hist-filter').value||'');
+      btn.textContent='🔄 Sincronizar';
+    };
 
     document.getElementById('c-btn').onclick=()=>{
       try{
@@ -273,18 +355,22 @@ Error generating stack: `+u.message+`
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
         if(rest>0){ alert('Faltam '+rest); return; }
         localStorage.setItem(KP, JSON.stringify(pos));
-        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+        try{ fetch(FB_BASE+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
         const reg={id:Date.now(), materialId:sel.achados[0]?.item?.materialId||sel.codigo, sku:sel.codigo, codigo:sel.codigo, nome:sel.nome, qtd:q, ordem:ordem, op:ordem, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), locais:selecionados.map(s=>`${s.ruaNome} ${s.posId}`).join(', ')};
         const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
+        syncConsumosToFirebase(allC);
         const msg=document.getElementById('c-msg');
-        msg.innerHTML=`<div style="color:#10b981; font-weight:bold;">✅ BAIXA COM OP REALIZADA</div><div style="margin-top:6px;"><span style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; padding:4px 10px; font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px; color:#a1a1aa; margin-top:6px;">${logs.join('<br>')}</div>`;
+        msg.innerHTML=`<div style="color:#10b981; font-weight:bold;">✅ BAIXA COM OP REALIZADA - SALVO EM TODOS DISPOSITIVOS</div><div style="margin-top:6px;"><span style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; padding:4px 10px; font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px; color:#a1a1aa; margin-top:6px;">${logs.join('<br>')}</div>`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.border='1px solid #10b981';
         renderHist(document.getElementById('c-hist-filter').value||'');
-        setTimeout(()=>{ msg.style.display='none'; },4000);
+
+        // LIMPAR TODOS OS CAMPOS APÓS CONSUMO
+        limparCamposConsumo();
+
+        setTimeout(()=>{ msg.style.display='none'; },5000);
       }catch(e){ alert(e.message); }
     };
 
-    // inicializa historico
     renderHist();
   }
 
@@ -313,9 +399,9 @@ Error generating stack: `+u.message+`
           const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
           const pos=getP(); const ruas=getR(); const achados=[];
           for(const p of pos){ for(const it of (p.itens||[])){ if(String(it.codigo||'').toLowerCase().includes(cod)){ const ruaNome = ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p, item:it, ruaNome}); } } }
-          if(achados.length===0){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px; font-size:12px;">❌ ${cod} não encontrado em nenhuma Rua</div>`; }
+          if(achados.length===0){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px; font-size:12px;">❌ ${cod} não encontrado</div>`; }
           else {
-            res.innerHTML=`<div style="background:#0e0e10; border:1px solid #10b981; border-radius:12px; padding:12px;"><div style="color:#10b981; font-weight:bold; margin-bottom:10px; font-size:12px;">✅ ${achados.length} localização(ões) (busca em TODAS posições, IDs diferentes):</div>${achados.map(a=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; gap:12px; margin-bottom:8px;"><div style="background:#7c3aed; border-radius:8px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white; font-weight:bold; font-size:12px;">${a.item.codigo}</div><div style="color:#a1a1aa; font-size:11px;">${a.item.descricao||''}</div><div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#10b981;">N${String(a.pos.nivel).padStart(2,'0')}</span><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#fbbf24;">D${String(a.pos.div).padStart(2,'0')}</span><span style="background:#10b981; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">Qtd: ${a.item.qtd}</span></div></div></div>`).join('')}</div>`;
+            res.innerHTML=`<div style="background:#0e0e10; border:1px solid #10b981; border-radius:12px; padding:12px;"><div style="color:#10b981; font-weight:bold; margin-bottom:10px; font-size:12px;">✅ ${achados.length} localização(ões) (TODAS posições):</div>${achados.map(a=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; gap:12px; margin-bottom:8px;"><div style="background:#7c3aed; border-radius:8px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white; font-weight:bold; font-size:12px;">${a.item.codigo}</div><div style="color:#a1a1aa; font-size:11px;">${a.item.descricao||''}</div><div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#10b981; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">Qtd: ${a.item.qtd}</span></div></div></div>`).join('')}</div>`;
           }
         }
         btn.onclick=buscarNoEstoque; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoEstoque(); } }); btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
