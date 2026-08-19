@@ -149,31 +149,81 @@ Error generating stack: `+u.message+`
     setTimeout(()=>inpCod.focus(), 200);
   }
 
-  function renderConsumo(){
+    function renderConsumo(){
     const root=document.getElementById('consumo-root'); if(!root) return;
     const all=getAll();
     root.innerHTML=`<div style="max-width:1440px; margin:0 auto; padding:16px;"><div style="display:flex; justify-content:space-between;"><button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white;">← Voltar</button><div style="font-size:11px; color:#10b981;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div></div>
-    <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;"><div style="color:white; font-weight:bold;">CONSUMO - Baixa somente do ESTOQUE real</div><div style="font-size:11px; color:#71717a; margin-top:4px;">Mostra apenas posições de estoque com o código (ignora Código Livre)</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><div style="display:flex; gap:8px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR NO ESTOQUE</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:12px;"><div id="c-nome" style="color:white; font-weight:bold; font-size:15px;"></div><div id="c-sku" style="color:#71717a; font-size:12px;"></div><div id="c-total-wrap" style="margin-top:8px;">Total em estoque: <span id="c-total" style="color:#10b981; font-size:22px; font-weight:bold;"></span></div><div id="c-locais" style="margin-top:12px; display:grid; gap:8px;"></div></div><div style="display:flex; gap:10px; margin-top:14px;"><input id="c-qtd" type="number" style="flex:1; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd para baixar"><button id="c-btn" style="flex:1; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold;">BAIXAR E SUBTRAIR DO ESTOQUE</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap;"></div></div></div>`;
+    <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;"><div style="color:white; font-weight:bold;">CONSUMO - Selecione a localização para baixar</div><div style="font-size:11px; color:#71717a; margin-top:4px;">Mostra apenas ESTOQUE (ruas) com o código. Você escolhe de qual local consumir.</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><div style="display:flex; gap:8px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR NO ESTOQUE</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:12px;"><div style="display:flex; justify-content:space-between; align-items:center;"><div><div id="c-nome" style="color:white; font-weight:bold; font-size:15px;"></div><div id="c-sku" style="color:#71717a; font-size:12px;"></div></div><div style="text-align:right;"><div style="color:#71717a; font-size:10px;">TOTAL SELECIONADO</div><div id="c-total" style="color:#10b981; font-size:22px; font-weight:bold;">0</div><div id="c-total-info" style="color:#71717a; font-size:10px;"></div></div></div><div style="display:flex; gap:6px; margin-top:10px;"><button id="c-sel-all" style="height:28px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px; font-weight:bold;">Selecionar todos</button><button id="c-desel-all" style="height:28px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px;">Limpar seleção</button></div><div id="c-locais" style="margin-top:12px; display:grid; gap:8px; max-height:45vh; overflow:auto; padding-right:4px;"></div></div><div style="display:flex; gap:10px; margin-top:14px;"><input id="c-qtd" type="number" style="flex:1; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd para baixar"><button id="c-btn" style="flex:1; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold;">BAIXAR DA(S) LOCALIZAÇÃO(ÕES) SELECIONADA(S)</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap;"></div></div></div>`;
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
     const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card'); let sel=null;
+    function updateTotalSelecionado(){
+      if(!sel) return;
+      const selected = sel.achados.filter(a=>a.selecionado);
+      const totalSel = selected.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
+      document.getElementById('c-total').textContent = totalSel;
+      document.getElementById('c-total-info').textContent = `${selected.length} de ${sel.achados.length} locais • estoque total ${sel.totalGeral} un`;
+      // atualizar estilo dos cards
+      selected.forEach(a=>{
+        const el=document.getElementById('c-loc-'+a.idx);
+        if(el){ el.style.borderColor='#10b981'; el.style.background='#0f1a15'; }
+      });
+      sel.achados.filter(a=>!a.selecionado).forEach(a=>{
+        const el=document.getElementById('c-loc-'+a.idx);
+        if(el){ el.style.borderColor='#2a2a30'; el.style.background='#151518'; }
+      });
+    }
     function selMat(achados, codBuscado){
       if(!achados.length){ card.style.display='none'; sel=null; return; }
-      const total = achados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
+      const totalGeral = achados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
       const primeiro = achados[0].item;
-      sel = { codigo: primeiro.codigo, sku: primeiro.codigo, nome: primeiro.descricao||primeiro.codigo, total: total, achados: achados, id: primeiro.materialId || primeiro.codigo };
+      // inicializa selecionado
+      achados.forEach((a,i)=>{ a.idx=i; a.selecionado=false; });
+      sel = { codigo: primeiro.codigo, sku: primeiro.codigo, nome: primeiro.descricao||primeiro.codigo, totalGeral: totalGeral, achados: achados, id: primeiro.materialId || primeiro.codigo };
       card.style.display='block';
       document.getElementById('c-nome').textContent=primeiro.descricao||primeiro.codigo;
       document.getElementById('c-sku').textContent=primeiro.codigo;
-      document.getElementById('c-total').textContent=total;
+      document.getElementById('c-total').textContent=0;
+      document.getElementById('c-total-info').textContent=`0 de ${achados.length} locais • estoque total ${totalGeral} un`;
       const ruas=getR();
       document.getElementById('c-locais').innerHTML = achados.map(a=>{
         const ruaNome = a.ruaNome || (ruas[a.pos.ruaIndex]?.nome || `Rua ${String(a.pos.ruaIndex+1).padStart(2,'0')}`);
-        return `<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
-          <div><div style="color:#a78bfa; font-weight:bold; font-size:12px;">📍 ${ruaNome} • N${String(a.pos.nivel).padStart(2,'0')} • D${String(a.pos.div).padStart(2,'0')} • ${a.pos.posId}</div><div style="color:#71717a; font-size:11px; font-family:monospace;">${ruaNome} → N${a.pos.nivel} → D${a.pos.div} → ${a.pos.posId}</div></div>
-          <div style="background:#10b981; color:black; font-weight:bold; border-radius:9999px; padding:6px 12px; font-size:13px;">Qtd: ${a.item.qtd}</div>
-        </div>`;
+        return `<label id="c-loc-${a.idx}" style="background:#151518; border:2px solid #2a2a30; border-radius:12px; padding:10px; display:flex; gap:12px; align-items:center; cursor:pointer; transition:0.2s;">
+          <input type="checkbox" id="c-chk-${a.idx}" style="width:20px; height:20px; accent-color:#10b981;">
+          <div style="flex:1;">
+            <div style="color:#a78bfa; font-weight:bold; font-size:12px;">📍 ${ruaNome} • N${String(a.pos.nivel).padStart(2,'0')} • D${String(a.pos.div).padStart(2,'0')} • ${a.pos.posId}</div>
+            <div style="color:#71717a; font-size:11px; font-family:monospace;">${ruaNome} → N${a.pos.nivel} → D${a.pos.div} → ${a.pos.posId} • ${a.item.codigo}</div>
+          </div>
+          <div style="background:#0e0e10; border:1px solid #2a2a30; color:#10b981; font-weight:bold; border-radius:9999px; padding:6px 12px; font-size:13px; white-space:nowrap;">Qtd: ${a.item.qtd}</div>
+        </label>`;
       }).join('');
-      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px; border-radius:8px;">✅ ${achados.length} local(is) no estoque com <b>${codBuscado}</b> — Total ${total} un</div>`;
+      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px; border-radius:8px;">✅ ${achados.length} local(is) no estoque com <b>${codBuscado}</b> — Total ${totalGeral} un<br><span style="font-size:11px; color:#a1a1aa;">Selecione abaixo de onde quer consumir</span></div>`;
+
+      // listeners
+      achados.forEach(a=>{
+        const chk=document.getElementById('c-chk-'+a.idx);
+        const label=document.getElementById('c-loc-'+a.idx);
+        if(chk){
+          chk.addEventListener('change', ()=>{
+            a.selecionado = chk.checked;
+            updateTotalSelecionado();
+          });
+          label.addEventListener('click', (e)=>{
+            if(e.target.tagName!=='INPUT'){
+              chk.checked=!chk.checked;
+              a.selecionado = chk.checked;
+              updateTotalSelecionado();
+            }
+          });
+        }
+      });
+      document.getElementById('c-sel-all').onclick=()=>{
+        sel.achados.forEach(a=>{ a.selecionado=true; const c=document.getElementById('c-chk-'+a.idx); if(c) c.checked=true; });
+        updateTotalSelecionado();
+      };
+      document.getElementById('c-desel-all').onclick=()=>{
+        sel.achados.forEach(a=>{ a.selecionado=false; const c=document.getElementById('c-chk-'+a.idx); if(c) c.checked=false; });
+        updateTotalSelecionado();
+      };
     }
     function doBusca(){
       const codRaw=inp.value.trim(); if(!codRaw){ res.innerHTML='<span style="color:#fbbf24;">Digite um código</span>'; return; }
@@ -184,15 +234,14 @@ Error generating stack: `+u.message+`
           const c = String(it.codigo||'').toLowerCase();
           if(c===cod || c.includes(cod)){
             const ruaNome = ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
-            achados.push({pos:p, item:it, ruaNome});
+            achados.push({pos:p, item:it, ruaNome, posId:p.posId, ruaIndex:p.ruaIndex, nivel:p.nivel, div:p.div});
           }
         }
       }
       if(achados.length===0){
-        res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ <b>${codRaw}</b> não encontrado no ESTOQUE (só verificado nas ruas)</div>`;
+        res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ <b>${"${codRaw}"}</b> não encontrado no ESTOQUE (só verificado nas ruas)</div>`;
         card.style.display='none'; sel=null;
       } else {
-        // ordenar por rua / nivel / div para facilitar
         achados.sort((a,b)=> (a.pos.ruaIndex - b.pos.ruaIndex) || (a.pos.nivel - b.pos.nivel) || (a.pos.div - b.pos.div));
         selMat(achados, codRaw);
       }
@@ -200,21 +249,51 @@ Error generating stack: `+u.message+`
     btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } });
     document.getElementById('c-btn').onclick=()=>{
       try{
-        if(!sel){ alert('Busque'); return; }
+        if(!sel){ alert('Busque um código primeiro'); return; }
+        const selecionados = sel.achados.filter(a=>a.selecionado);
+        if(selecionados.length===0){ alert('Selecione pelo menos 1 localização'); return; }
+        const totalSelecionado = selecionados.reduce((s,a)=>s+(Number(a.item.qtd)||0),0);
         const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Qtd inválida'); return; }
-        if(q>sel.total){ alert('Saldo insuf: '+sel.total); return; }
+        if(q>totalSelecionado){ alert('Saldo insuficiente nos locais selecionados: '+totalSelecionado+' (você pediu '+q+')'); return; }
         let rest=q; let pos=getP(); let livre=getL(); let logs=[];
-        for(const p of pos){ if(rest<=0) break; for(let i=0;i<(p.itens||[]).length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.materialId)===String(sel.id) || String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); logs.push(`Rua ${p.ruaIndex} ${p.posId}: ${disp}->${disp-usar}`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } }
+        // consumir apenas dos selecionados, na ordem que aparecem
+        for(const selLoc of selecionados){
+          if(rest<=0) break;
+          const ruaIndex = selLoc.pos.ruaIndex;
+          const posId = selLoc.pos.posId;
+          // achar a posicao real no array pos
+          for(const p of pos){
+            if(p.ruaIndex===ruaIndex && p.posId===posId){
+              for(let i=0;i<(p.itens||[]).length;i++){
+                if(rest<=0) break;
+                const it=p.itens[i];
+                if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase() || String(it.materialId)===String(sel.id)){
+                  // garantir que é o mesmo registro da lista (pode ter mais de um item igual na mesma posicao, pega o que bate qtd)
+                  if(Number(it.qtd)!==Number(selLoc.item.qtd) && selLoc.item.qtd) { /* continua mesmo assim se codigo bate */ }
+                  const disp=Number(it.qtd)||0; if(disp<=0) continue;
+                  const usar=Math.min(disp, rest);
+                  const ruaNomeReal = getR()[p.ruaIndex]?.nome || `Rua ${p.ruaIndex}`;
+                  logs.push(`${ruaNomeReal} ${p.posId}: ${disp}->${disp-usar} (-${usar})`);
+                  it.qtd=disp-usar;
+                  rest-=usar;
+                  if(it.qtd<=0){ p.itens.splice(i,1); i--; }
+                  break; // consome só 1 item por local selecionado (cada local tem 1 item daquele codigo)
+                }
+              }
+            }
+          }
+        }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        // AGORA SOMENTE ESTOQUE - não baixa do livre
-        if(rest>0){ alert('Saldo insuficiente no ESTOQUE. Faltam '+rest+' (disponível apenas nas ruas)'); return; }
+        if(rest>0){ alert('Faltam '+rest+' - erro ao baixar dos selecionados'); return; }
         localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre));
-        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
-        const reg={id:Date.now(), materialId:sel.id, sku:sel.sku, nome:sel.nome, qtd:q, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n')}; const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
-        const msg=document.getElementById('c-msg'); msg.textContent=`✅ BAIXADO ${q} de ${sel.sku}\n`+logs.join('\n')+`\nRecarregando...`; msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; setTimeout(()=>location.reload(),1500);
+        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+        const reg={id:Date.now(), materialId:sel.id, sku:sel.sku, nome:sel.nome, qtd:q, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), locais: selecionados.map(s=>`${s.ruaNome} ${s.pos.posId} (${s.item.qtd})`).join(', ')};
+        const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
+        const msg=document.getElementById('c-msg'); msg.textContent=`✅ BAIXADO ${q} de ${sel.sku}\nLocais:\n`+logs.join('\n')+`\nRecarregando...`; msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; setTimeout(()=>location.reload(),1500);
       }catch(e){ alert(e.message); }
     };
   }
+
 
   function renderEstoqueSearch(){
     const interval=setInterval(()=>{
