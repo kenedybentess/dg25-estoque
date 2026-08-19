@@ -64,8 +64,9 @@ Error generating stack: `+u.message+`
   <script>(function(){function m(a){var h=a.getAttribute("href");if(!h)return;try{var u=new URL(h,document.baseURI);if((u.protocol==="http:"||u.protocol==="https:")&&u.host!==location.host){a.target="_blank";a.rel="noopener noreferrer";}}catch(e){}}function s(){document.querySelectorAll("a[href]").forEach(m);}if(document.readyState!=="loading"){s();}else{document.addEventListener("DOMContentLoaded",s);}document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a){m(a);}},true);})();</script>
   
 
+
 <div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
-<div id="livre-individual-root" style="display:none;"></div>
+<div id="edit-estoque-root" style="display:none; position:fixed; inset:0; z-index:1000000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; overflow:auto; padding:16px;"></div>
 <script>
 (function(){
   const KP="wms_final_posicoes",KC="wms_final_consumos",KR="wms_final_ruas";
@@ -80,7 +81,218 @@ Error generating stack: `+u.message+`
   (async()=>{try{await fetchC();await fetchP()}catch{}})();
   setInterval(async()=>{try{await fetchC();await fetchP()}catch{}},8000);
   window.addEventListener('focus',async()=>{try{await fetchC();await fetchP()}catch{}});
-  document.addEventListener('visibilitychange',async()=>{if(!document.hidden){try{await fetchC();await fetchP()}catch{}}});
+
+  window.abrirEditarPosicao = function(posIdOriginal){
+    const pos=getP(); const ruas=getR();
+    const pIndex=pos.findIndex(p=>p.posId===posIdOriginal);
+    if(pIndex===-1){ alert('Posicao nao encontrada: '+posIdOriginal); return; }
+    const p=pos[pIndex];
+    const modal=document.getElementById('edit-estoque-root');
+    modal.style.display='flex';
+    modal.innerHTML=`<div style="background:#151518; border:2px solid #7c3aed; border-radius:20px; padding:20px; width:95%; max-width:500px; max-height:90vh; overflow:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div style="color:white; font-weight:bold; font-size:14px;">EDITAR RUA + N + D</div>
+        <button id="edit-fechar" style="width:32px; height:32px; border-radius:50%; background:#232326; color:white; border:none; cursor:pointer;">X</button>
+      </div>
+      <div style="background:#0e0e10; border-radius:12px; padding:12px; margin-bottom:16px;">
+        <div style="color:#71717a; font-size:10px;">POSICAO ATUAL</div>
+        <div style="color:white; font-weight:bold; font-size:13px; margin-top:4px;">${p.posId} - Rua ${ruas[p.ruaIndex]?.nome||p.ruaIndex} N${String(p.nivel).padStart(2,'0')} D${String(p.div).padStart(2,'0')}</div>
+        <div style="color:#a1a1aa; font-size:11px; margin-top:6px;">Itens: ${(p.itens||[]).map(it=>it.codigo+' ('+it.qtd+')').join(', ')||'vazio'}</div>
+      </div>
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label style="color:#fbbf24; font-size:11px; font-weight:bold;">RUA *</label>
+          <select id="edit-rua" style="width:100%; height:44px; background:#0e0e10; border:1px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; margin-top:6px;">
+            ${ruas.map((r,i)=>`<option value="${i}" ${i===p.ruaIndex?'selected':''}>${r.nome||'Rua '+i} (indice ${i})</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label style="color:#10b981; font-size:11px; font-weight:bold;">NIVEL (N) *</label>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button id="edit-n-menos" style="width:44px; height:44px; background:#232326; color:white; border:1px solid #3a3a40; border-radius:10px; font-weight:bold; cursor:pointer;">-</button>
+              <input id="edit-n" type="number" min="1" max="20" value="${p.nivel}" style="flex:1; height:44px; background:#0e0e10; border:1px solid #10b981; color:white; border-radius:10px; text-align:center; font-weight:bold;">
+              <button id="edit-n-mais" style="width:44px; height:44px; background:#10b981; color:black; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">+</button>
+            </div>
+          </div>
+          <div>
+            <label style="color:#a78bfa; font-size:11px; font-weight:bold;">DIVISAO (D) *</label>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button id="edit-d-menos" style="width:44px; height:44px; background:#232326; color:white; border:1px solid #3a3a40; border-radius:10px; font-weight:bold; cursor:pointer;">-</button>
+              <input id="edit-d" type="number" min="1" max="20" value="${p.div}" style="flex:1; height:44px; background:#0e0e10; border:1px solid #a78bfa; color:white; border-radius:10px; text-align:center; font-weight:bold;">
+              <button id="edit-d-mais" style="width:44px; height:44px; background:#a78bfa; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">+</button>
+            </div>
+          </div>
+        </div>
+        <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:10px; padding:10px;">
+          <div style="color:#71717a; font-size:10px;">NOVO ID SERA:</div>
+          <div id="edit-preview" style="color:#10b981; font-weight:bold; font-family:monospace; font-size:14px; margin-top:4px;">${p.ruaIndex}-${p.nivel}-${p.div}</div>
+        </div>
+        <button id="edit-salvar" style="width:100%; height:48px; background:#10b981; color:black; font-weight:bold; border-radius:9999px; border:none; cursor:pointer; font-size:14px;">SALVAR RUA + N + D</button>
+      </div>
+    </div>`;
+    document.getElementById('edit-fechar').onclick=()=>{ modal.style.display='none'; };
+    modal.onclick=(e)=>{ if(e.target===modal) modal.style.display='none'; };
+    function updatePreview(){
+      const ruaIdx=Number(document.getElementById('edit-rua').value)||0;
+      const n=Number(document.getElementById('edit-n').value)||1;
+      const d=Number(document.getElementById('edit-d').value)||1;
+      document.getElementById('edit-preview').textContent=`${ruaIdx}-${n}-${d}`;
+    }
+    document.getElementById('edit-rua').addEventListener('change', updatePreview);
+    document.getElementById('edit-n').addEventListener('input', updatePreview);
+    document.getElementById('edit-d').addEventListener('input', updatePreview);
+    document.getElementById('edit-n-menos').onclick=()=>{ const inp=document.getElementById('edit-n'); let v=Number(inp.value)||1; if(v>1){ inp.value=v-1; updatePreview(); } };
+    document.getElementById('edit-n-mais').onclick=()=>{ const inp=document.getElementById('edit-n'); let v=Number(inp.value)||1; inp.value=v+1; updatePreview(); };
+    document.getElementById('edit-d-menos').onclick=()=>{ const inp=document.getElementById('edit-d'); let v=Number(inp.value)||1; if(v>1){ inp.value=v-1; updatePreview(); } };
+    document.getElementById('edit-d-mais').onclick=()=>{ const inp=document.getElementById('edit-d'); let v=Number(inp.value)||1; inp.value=v+1; updatePreview(); };
+    document.getElementById('edit-salvar').onclick=()=>{
+      try{
+        const novaRuaIdx=Number(document.getElementById('edit-rua').value);
+        const novoN=Number(document.getElementById('edit-n').value);
+        const novoD=Number(document.getElementById('edit-d').value);
+        let pos=getP();
+        const idx=pos.findIndex(pp=>pp.posId===posIdOriginal);
+        const antigo=pos[idx];
+        const novoPosId=`${novaRuaIdx}-${novoN}-${novoD}`;
+        const existe=pos.find(pp=>pp.posId===novoPosId && pp.posId!==posIdOriginal);
+        if(existe){
+          if(!confirm(`Ja existe ${novoPosId}. Mesclar?`)) return;
+          for(const it of (antigo.itens||[])){
+            const ja=existe.itens.find(i=>String(i.codigo||'').toLowerCase()===String(it.codigo||'').toLowerCase());
+            if(ja) ja.qtd=(Number(ja.qtd)||0)+(Number(it.qtd)||0);
+            else existe.itens.push(it);
+          }
+          pos.splice(idx,1);
+        } else {
+          antigo.ruaIndex=novaRuaIdx; antigo.nivel=novoN; antigo.div=novoD; antigo.posId=novoPosId;
+        }
+        localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
+        alert(`EDITADO! ${posIdOriginal} -> ${novoPosId}`); modal.style.display='none'; location.reload();
+      }catch(e){ alert('Erro: '+e.message); }
+    };
+    updatePreview();
+  };
+
+  window.ajustarND = function(posId,tipo,delta){
+    try{
+      let pos=getP();
+      const idx=pos.findIndex(p=>p.posId===posId);
+      if(idx===-1){ alert('Pos nao encontrada'); return; }
+      const p=pos[idx];
+      if(tipo==='nivel') p.nivel=Math.max(1,(Number(p.nivel)||1)+delta);
+      else p.div=Math.max(1,(Number(p.div)||1)+delta);
+      const novoPosId=`${p.ruaIndex}-${p.nivel}-${p.div}`;
+      const conflito=pos.find(pp=>pp.posId===novoPosId && pp.posId!==posId);
+      if(conflito){
+        if(!confirm(`Ja existe ${novoPosId}. Mesclar?`)) return;
+        for(const it of (p.itens||[])){
+          const ja=conflito.itens.find(i=>String(i.codigo||'').toLowerCase()===String(it.codigo||'').toLowerCase());
+          if(ja) ja.qtd=(Number(ja.qtd)||0)+(Number(it.qtd)||0);
+          else conflito.itens.push(it);
+        }
+        pos.splice(idx,1);
+      } else {
+        p.posId=novoPosId;
+      }
+      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
+      alert(`${tipo} ajustado -> ${novoPosId}`); location.reload();
+    }catch(e){ alert('Erro: '+e.message); }
+  };
+
+  // NOVA FUNCAO: CLICAR NA RUA 12 E EDITAR N e D
+  window.abrirGerenciadorRua = function(ruaIndex){
+    const pos=getP(); const ruas=getR();
+    const ruaNome=ruas[ruaIndex]?.nome||`Rua ${ruaIndex}`;
+    const posicoesDaRua=pos.filter(p=>p.ruaIndex===ruaIndex).sort((a,b)=>(a.nivel-b.nivel)||(a.div-b.div);
+    const modal=document.getElementById('edit-estoque-root');
+    modal.style.display='flex';
+    modal.innerHTML=`<div style="background:#151518; border:2px solid #fbbf24; border-radius:20px; padding:20px; width:98%; max-width:800px; max-height:90vh; overflow:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div style="color:white; font-weight:bold; font-size:16px;">📍 ${ruaNome} - Gerenciar Nível e Destino</div>
+        <button id="edit-fechar" style="width:32px; height:32px; border-radius:50%; background:#232326; color:white; border:none; cursor:pointer;">X</button>
+      </div>
+      <div style="background:#0e0e10; border-radius:12px; padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+        <div><div style="color:#71717a; font-size:10px;">RUA SELECIONADA</div><div style="color:#fbbf24; font-weight:bold; font-size:14px;">${ruaNome} (índice ${ruaIndex}) - ${posicoesDaRua.length} posições</div></div>
+        <div style="display:flex; gap:6px;">
+          <button onclick="window.adicionarNivelRua(${ruaIndex})" style="height:32px; padding:0 12px; background:#10b981; color:black; border-radius:8px; border:none; font-weight:bold; cursor:pointer; font-size:11px;">+ Adicionar Nível</button>
+          <button onclick="window.adicionarDestinoRua(${ruaIndex})" style="height:32px; padding:0 12px; background:#a78bfa; color:white; border-radius:8px; border:none; font-weight:bold; cursor:pointer; font-size:11px;">+ Adicionar Destino</button>
+        </div>
+      </div>
+      <div style="display:grid; gap:8px;">
+        ${posicoesDaRua.map(p=>`
+          <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:12px; padding:12px; display:flex; gap:12px; align-items:center;">
+            <div style="background:#7c3aed; border-radius:10px; width:56px; height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:11px;">
+              <div>${ruaNome}</div><div>N${String(p.nivel).padStart(2,'0')} D${String(p.div).padStart(2,'0')}</div><div style="font-size:9px; opacity:0.7;">${p.posId}</div>
+            </div>
+            <div style="flex:1;">
+              <div style="color:white; font-weight:bold; font-size:12px;">${(p.itens||[]).length} código(s) - ${(p.itens||[]).reduce((s,it)=>s+(Number(it.qtd)||0),0)} un</div>
+              <div style="color:#a1a1aa; font-size:10px; margin-top:4px;">${(p.itens||[]).map(it=>it.codigo+' ('+it.qtd+')').join(', ')||'vazio'}</div>
+              <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:4px; background:#151518; border-radius:8px; padding:4px 8px;">
+                  <span style="color:#10b981; font-size:10px; font-weight:bold;">NÍVEL:</span>
+                  <button onclick="window.ajustarND('${p.posId}','nivel',-1)" style="width:28px; height:28px; background:#232326; color:white; border-radius:6px; border:1px solid #3a3a40; cursor:pointer;">-</button>
+                  <span style="color:white; font-weight:bold; font-size:12px; min-width:20px; text-align:center;">${p.nivel}</span>
+                  <button onclick="window.ajustarND('${p.posId}','nivel',1)" style="width:28px; height:28px; background:#10b981; color:black; border-radius:6px; border:none; cursor:pointer; font-weight:bold;">+</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:4px; background:#151518; border-radius:8px; padding:4px 8px;">
+                  <span style="color:#a78bfa; font-size:10px; font-weight:bold;">DESTINO:</span>
+                  <button onclick="window.ajustarND('${p.posId}','div',-1)" style="width:28px; height:28px; background:#232326; color:white; border-radius:6px; border:1px solid #3a3a40; cursor:pointer;">-</button>
+                  <span style="color:white; font-weight:bold; font-size:12px; min-width:20px; text-align:center;">${p.div}</span>
+                  <button onclick="window.ajustarND('${p.posId}','div',1)" style="width:28px; height:28px; background:#a78bfa; color:white; border-radius:6px; border:none; cursor:pointer; font-weight:bold;">+</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:4px; background:#151518; border-radius:8px; padding:4px 8px;">
+                  <span style="color:#fbbf24; font-size:10px; font-weight:bold;">QTD:</span>
+                  <span style="color:white; font-size:11px;">${(p.itens||[]).reduce((s,it)=>s+(Number(it.qtd)||0),0)} un</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <button onclick="window.abrirEditarPosicao('${p.posId}')" style="height:32px; padding:0 12px; border-radius:8px; background:#7c3aed; color:white; font-size:11px; border:none; cursor:pointer;">✏️ Editar</button>
+              <button onclick="window.removerPosicao('${p.posId}')" style="height:28px; padding:0 10px; border-radius:8px; background:#232326; color:#ef4444; font-size:10px; border:1px solid #3a3a40; cursor:pointer;">🗑️</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ${posicoesDaRua.length===0?`<div style="color:#71717a; text-align:center; padding:20px;">Nenhuma posição nesta rua. Clique em + Adicionar Nível/Destino</div>`:''}
+    </div>`;
+    document.getElementById('edit-fechar').onclick=()=>{ modal.style.display='none'; };
+    modal.onclick=(e)=>{ if(e.target===modal) modal.style.display='none'; };
+  };
+
+  window.adicionarNivelRua = function(ruaIndex){
+    try{
+      let pos=getP();
+      const posDaRua=pos.filter(p=>p.ruaIndex===ruaIndex);
+      const maxNivel=Math.max(0,...posDaRua.map(p=>p.nivel||0));
+      const novoNivel=maxNivel+1;
+      const novaPos={posId:`${ruaIndex}-${novoNivel}-1`, ruaIndex, nivel:novoNivel, div:1, itens:[]};
+      pos.push(novaPos);
+      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
+      alert(`✅ Nível ${novoNivel} adicionado na Rua ${ruaIndex}`); window.abrirGerenciadorRua(ruaIndex);
+    }catch(e){ alert('Erro: '+e.message); }
+  };
+  window.adicionarDestinoRua = function(ruaIndex){
+    try{
+      let pos=getP();
+      const posDaRua=pos.filter(p=>p.ruaIndex===ruaIndex);
+      const maxDiv=Math.max(0,...posDaRua.map(p=>p.div||0));
+      const novoDiv=maxDiv+1;
+      const novoNivel=posDaRua.length>0?posDaRua[0].nivel:1;
+      const novaPos={posId:`${ruaIndex}-${novoNivel}-${novoDiv}`, ruaIndex, nivel:novoNivel, div:novoDiv, itens:[]};
+      pos.push(novaPos);
+      localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
+      alert(`✅ Destino ${novoDiv} adicionado na Rua ${ruaIndex}`); window.abrirGerenciadorRua(ruaIndex);
+    }catch(e){ alert('Erro: '+e.message); }
+  };
+  window.removerPosicao = function(posId){
+    if(!confirm(`Remover posição ${posId}? Itens serão perdidos!`)) return;
+    let pos=getP(); const idx=pos.findIndex(p=>p.posId===posId); if(idx===-1) return;
+    const ruaIdx=pos[idx].ruaIndex;
+    pos.splice(idx,1);
+    localStorage.setItem(KP, JSON.stringify(pos)); syncP(pos);
+    alert(`Posição ${posId} removida`); window.abrirGerenciadorRua(ruaIdx);
+  };
 
   function renderConsumo(){
     const root=document.getElementById('consumo-root');if(!root)return;
@@ -90,11 +302,11 @@ Error generating stack: `+u.message+`
         <button id="c-voltar" style="height:36px;padding:0 16px;border-radius:9999px;background:#232326;color:white;border:none;cursor:pointer;">← Voltar</button>
         <div style="display:flex;gap:8px;align-items:center;">
           <button id="c-sync-fb" style="height:32px;padding:0 12px;border-radius:9999px;background:#3b82f6;color:white;font-size:11px;border:none;cursor:pointer;">🔄 Sincronizar</button>
-          <div style="font-size:12px;color:#71717a;">Total: <span style="color:#10b981;font-weight:bold;">${totalEstoque} un</span> <span style="color:#3b82f6;font-size:9px;">SYNC 8s</span></div>
+          <div style="font-size:12px;color:#71717a;">Total: <span style="color:#10b981;font-weight:bold;">${totalEstoque} un</span></div>
         </div>
       </div>
       <div style="background:#151518;border:1px solid #10b981;border-radius:16px;padding:14px;margin-bottom:16px;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;color:#fbbf24;font-size:11px;font-weight:bold;"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;"></span>PESQUISAR CÓDIGO (agora busca em TODAS as posições, mesmo com IDs diferentes)</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;color:#fbbf24;font-size:11px;font-weight:bold;"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;"></span>PESQUISAR CÓDIGO (busca em TODAS as posições)</div>
         <div style="display:flex;gap:10px;"><input id="c-cod" style="flex:1;height:48px;background:#0e0e10;border:1px solid #3a3a40;color:white;border-radius:10px;padding:0 16px;font-size:14px;" placeholder="Digite código exato e ENTER"><button id="c-buscar" style="height:48px;padding:0 22px;border-radius:12px;background:#10b981;color:black;font-weight:bold;font-size:12px;border:none;cursor:pointer;white-space:nowrap;">BUSCAR TODAS LOCALIZAÇÕES</button></div>
         <div id="c-res" style="margin-top:12px;"></div><div id="c-locais-lista" style="margin-top:12px;display:grid;gap:8px;"></div>
       </div>
@@ -111,7 +323,7 @@ Error generating stack: `+u.message+`
       </div>
       <div style="background:#151518;border:1px solid #2a2a30;border-radius:16px;padding:14px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;">📋</span><span style="color:white;font-weight:bold;font-size:13px;">HISTÓRICO</span><span id="c-hist-count" style="color:#71717a;font-size:11px;">0 registros</span><span style="background:#3b82f6;color:white;font-size:9px;padding:2px 6px;border-radius:9999px;">SYNC TODOS DISPOSITIVOS</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;">📋</span><span style="color:white;font-weight:bold;font-size:13px;">HISTÓRICO</span><span id="c-hist-count" style="color:#71717a;font-size:11px;">0 registros</span></div>
           <div style="display:flex;gap:8px;"><input id="c-hist-filter" style="height:32px;width:180px;background:#0e0e10;border:1px solid #2a2a30;color:white;border-radius:9999px;padding:0 12px;font-size:11px;" placeholder="Buscar OP ou código..."><button id="c-hist-limpar" style="height:32px;padding:0 14px;border-radius:9999px;background:#232326;color:white;font-size:11px;border:none;cursor:pointer;">Limpar</button></div>
         </div>
         <div id="c-hist-loading" style="color:#3b82f6;font-size:11px;text-align:center;padding:10px;display:none;">🔄 Sincronizando...</div>
@@ -133,7 +345,7 @@ Error generating stack: `+u.message+`
       res.innerHTML=`<div style="color:#10b981;background:rgba(16,185,129,0.1);padding:8px 10px;border-radius:8px;font-size:12px;">✅ ${achados.length} localização(ões) com <b>${codRaw}</b> — Total ${total} un</div>`;
       sel={codigo:achados[0].codigo,nome:achados[0].item.descricao||achados[0].codigo,total,achados};
       selLocais=achados.map((a,i)=>({...a,idx:i,selecionado:true}));
-      locaisDiv.innerHTML=achados.map((a,i)=>`<label style="background:#0e0e10;border:1px solid #10b981;border-radius:10px;padding:10px;display:flex;gap:10px;align-items:center;cursor:pointer;"><input type="checkbox" checked data-idx="${i}" class="c-loc-chk" style="width:18px;height:18px;accent-color:#10b981;"><div style="flex:1;"><div style="color:white;font-weight:bold;font-size:12px;">${a.codigo}</div><div style="color:#a78bfa;font-size:11px;">📍 ${a.ruaNome} • N${String(a.nivel).padStart(2,'0')} • D${String(a.div).padStart(2,'0')} • ${a.posId} — Qtd: ${a.qtd}</div></div></label>`).join('');
+      locaisDiv.innerHTML=achados.map((a,i)=>`<div style="background:#0e0e10;border:1px solid #10b981;border-radius:10px;padding:10px;"><div style="display:flex;gap:10px;align-items:center;"><label style="display:flex;gap:10px;align-items:center;flex:1;cursor:pointer;"><input type="checkbox" checked data-idx="${i}" class="c-loc-chk" style="width:18px;height:18px;accent-color:#10b981;"><div style="flex:1;"><div style="color:white;font-weight:bold;font-size:12px;">${a.codigo}</div><div style="color:#a78bfa;font-size:11px;">📍 ${a.ruaNome} • N${String(a.nivel).padStart(2,'0')} • D${String(a.div).padStart(2,'0')} • ${a.posId} — Qtd: ${a.qtd}</div></div></label><button onclick="window.abrirEditarPosicao('${a.posId}')" style="height:32px;padding:0 12px;border-radius:8px;background:#7c3aed;color:white;font-size:11px;border:none;cursor:pointer;white-space:nowrap;">✏️ Editar RUA+N+D</button></div></div>`).join('');
       locaisDiv.querySelectorAll('.c-loc-chk').forEach(chk=>{ chk.addEventListener('change',()=>{ selLocais[Number(chk.dataset.idx)].selecionado=chk.checked; }); });
     }
     document.getElementById('c-buscar').onclick=buscar;
@@ -156,7 +368,7 @@ Error generating stack: `+u.message+`
         if(rest===0){ for(const p of pos){ const it=(p.itens||[]).find(i=>String(i.codigo||'').toLowerCase()===String(reg.sku||'').toLowerCase()); if(it){ it.qtd=(Number(it.qtd)||0)+Number(reg.qtd); rest+=Number(reg.qtd); break; } } if(rest===0 && pos.length>0){ if(!pos[0].itens) pos[0].itens=[]; pos[0].itens.push({codigo:reg.sku,descricao:reg.nome,qtd:Number(reg.qtd),materialId:reg.materialId}); rest+=Number(reg.qtd); } }
         localStorage.setItem(KP,JSON.stringify(pos)); syncP(pos);
         const novos=allC.filter(r=>String(r.id)!==String(id)); localStorage.setItem(KC,JSON.stringify(novos)); syncC(novos);
-        alert(`✅ ESTORNO OK - ${rest} un devolvidos em TODOS dispositivos`);
+        alert(`✅ ESTORNO OK - ${rest} un devolvidos`);
         renderHist(document.getElementById('c-hist-filter').value||'');
       }catch(e){ alert('Erro: '+e.message); }
     };
@@ -198,8 +410,7 @@ Error generating stack: `+u.message+`
         }
         if(rest>0){ alert('Erro: faltam '+rest+' un'); return; }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        localStorage.setItem(KP,JSON.stringify(pos));
-        syncP(pos);
+        localStorage.setItem(KP,JSON.stringify(pos)); syncP(pos);
         const reg={id:Date.now(),materialId:sel.achados[0]?.item?.materialId||sel.codigo,sku:sel.codigo,codigo:sel.codigo,nome:sel.nome,qtd:q,ordem,tipo,obs,op:ordem,data:new Date().toLocaleString('pt-BR'),log:logs.join('\n'),locais:selecionados.map(s=>`${s.ruaNome} ${s.posId}`).join(', ')};
         const allC=getC(); allC.push(reg); localStorage.setItem(KC,JSON.stringify(allC)); syncC(allC);
         const msg=document.getElementById('c-msg');
@@ -212,6 +423,7 @@ Error generating stack: `+u.message+`
     };
     renderHist();
   }
+
   function renderEstoqueSearch(){
     const interval=setInterval(()=>{
       try{
@@ -223,7 +435,12 @@ Error generating stack: `+u.message+`
         const bar=document.createElement('div');
         bar.id='pesquisa-estoque-bar-v20';
         bar.style.cssText='background:#151518;border:1px solid #7c3aed;border-radius:16px;padding:14px;margin-bottom:14px;';
-        bar.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:10px;"><div style="color:white;font-weight:bold;font-size:12px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;"></span>PESQUISAR CÓDIGO (agora busca em TODAS as posições, mesmo com IDs diferentes)</div><div style="font-size:10px;color:#71717a;">${ruas.length} ruas</div></div><div style="display:flex;gap:8px;"><input id="estoque-busca-input-v20" style="flex:1;height:44px;background:#0e0e10;border:1px solid #3a3a40;color:white;border-radius:10px;padding:0 14px;font-size:13px;" placeholder="Digite código exato e ENTER"><button id="estoque-busca-btn-v20" style="height:44px;padding:0 18px;border-radius:10px;background:#10b981;color:black;font-weight:bold;font-size:11px;">BUSCAR TODAS LOCALIZAÇÕES</button><button id="estoque-busca-limpar-v20" style="height:44px;padding:0 12px;border-radius:10px;background:#232326;color:white;font-size:11px;">Limpar</button></div><div id="estoque-busca-res-v20" style="margin-top:12px;"></div>`;
+        bar.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:10px;"><div style="color:white;font-weight:bold;font-size:12px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;"></span>CLIQUE NA RUA PARA EDITAR NÍVEL E DESTINO + PESQUISAR CÓDIGO</div><div style="font-size:10px;color:#71717a;">${ruas.length} ruas</div></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          ${ruas.map((r,i)=>`<button onclick="window.abrirGerenciadorRua(${i})" style="height:36px; padding:0 14px; border-radius:9999px; background:${i===11?'#fbbf24':'#232326'}; color:${i===11?'black':'white'}; border:1px solid ${i===11?'#fbbf24':'#3a3a40'}; font-weight:bold; font-size:12px; cursor:pointer;">📍 ${r.nome||'Rua '+(i+1)}${i===11?' ← RUA 12':''}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;"><input id="estoque-busca-input-v20" style="flex:1;height:44px;background:#0e0e10;border:1px solid #3a3a40;color:white;border-radius:10px;padding:0 14px;font-size:13px;" placeholder="Digite código exato e ENTER"><button id="estoque-busca-btn-v20" style="height:44px;padding:0 18px;border-radius:10px;background:#10b981;color:black;font-weight:bold;font-size:11px;">BUSCAR TODAS LOCALIZAÇÕES</button><button id="estoque-busca-limpar-v20" style="height:44px;padding:0 12px;border-radius:10px;background:#232326;color:white;font-size:11px;">Limpar</button></div>
+        <div id="estoque-busca-res-v20" style="margin-top:12px;"></div>`;
         main.prepend(bar);
         const inp=document.getElementById('estoque-busca-input-v20'); const btn=document.getElementById('estoque-busca-btn-v20'); const btnLimpar=document.getElementById('estoque-busca-limpar-v20'); const res=document.getElementById('estoque-busca-res-v20');
         function buscarNoEstoque(){
@@ -231,7 +448,7 @@ Error generating stack: `+u.message+`
           const pos=getP(); const ruas=getR(); const achados=[];
           for(const p of pos) for(const it of(p.itens||[])) if(String(it.codigo||'').toLowerCase().includes(cod)){ const rn=ruas[p.ruaIndex]?.nome||`Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p,item:it,ruaNome:rn}); }
           if(!achados.length){ res.innerHTML=`<div style="color:#ef4444;background:rgba(239,68,68,0.1);padding:10px;border-radius:10px;font-size:12px;">❌ ${cod} não encontrado</div>`; }
-          else{ res.innerHTML=`<div style="background:#0e0e10;border:1px solid #10b981;border-radius:12px;padding:12px;"><div style="color:#10b981;font-weight:bold;margin-bottom:10px;font-size:12px;">✅ ${achados.length} localização(ões):</div>${achados.map(a=>`<div style="background:#151518;border:1px solid #2a2a30;border-radius:10px;padding:10px;display:flex;gap:12px;margin-bottom:8px;"><div style="background:#7c3aed;border-radius:8px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:10px;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white;font-weight:bold;font-size:12px;">${a.item.codigo}</div><div style="color:#a1a1aa;font-size:11px;">${a.item.descricao||''}</div><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><span style="background:#0e0e10;border:1px solid #2a2a30;border-radius:9999px;padding:3px 8px;font-size:10px;color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#10b981;color:black;border-radius:9999px;padding:3px 8px;font-size:10px;font-weight:bold;">Qtd: ${a.item.qtd}</span></div></div></div>`).join('')}</div>`; }
+          else{ res.innerHTML=`<div style="background:#0e0e10;border:1px solid #10b981;border-radius:12px;padding:12px;"><div style="color:#10b981;font-weight:bold;margin-bottom:10px;font-size:12px;">✅ ${achados.length} localização(ões):</div>${achados.map(a=>`<div style="background:#151518;border:1px solid #2a2a30;border-radius:10px;padding:10px;display:flex;gap:12px;margin-bottom:8px;align-items:center;"><div style="background:#7c3aed;border-radius:8px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:10px;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white;font-weight:bold;font-size:12px;">${a.item.codigo}</div><div style="color:#a1a1aa;font-size:11px;">${a.item.descricao||''}</div><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><span style="background:#0e0e10;border:1px solid #2a2a30;border-radius:9999px;padding:3px 8px;font-size:10px;color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#0e0e10;border:1px solid #2a2a30;border-radius:9999px;padding:3px 8px;font-size:10px;color:#10b981;">N${String(a.pos.nivel).padStart(2,'0')}</span><span style="background:#0e0e10;border:1px solid #2a2a30;border-radius:9999px;padding:3px 8px;font-size:10px;color:#fbbf24;">D${String(a.pos.div).padStart(2,'0')}</span><span style="background:#10b981;color:black;border-radius:9999px;padding:3px 8px;font-size:10px;font-weight:bold;">Qtd: ${a.item.qtd}</span></div></div><div style="display:flex;flex-direction:column;gap:6px;"><button onclick="window.abrirEditarPosicao('${a.pos.posId}')" style="height:32px;padding:0 12px;border-radius:8px;background:#7c3aed;color:white;font-size:11px;border:none;cursor:pointer;">✏️ Editar RUA+N+D</button><div style="display:flex;gap:4px;"><button onclick="window.ajustarND('${a.pos.posId}','nivel',-1)" style="width:28px;height:28px;background:#232326;color:white;border-radius:6px;border:1px solid #3a3a40;cursor:pointer;">N-</button><button onclick="window.ajustarND('${a.pos.posId}','nivel',1)" style="width:28px;height:28px;background:#10b981;color:black;border-radius:6px;border:none;cursor:pointer;">N+</button></div><div style="display:flex;gap:4px;"><button onclick="window.ajustarND('${a.pos.posId}','div',-1)" style="width:28px;height:28px;background:#232326;color:white;border-radius:6px;border:1px solid #3a3a40;cursor:pointer;">D-</button><button onclick="window.ajustarND('${a.pos.posId}','div',1)" style="width:28px;height:28px;background:#a78bfa;color:white;border-radius:6px;border:none;cursor:pointer;">D+</button></div></div></div>`).join('')}</div>`; }
         }
         btn.onclick=buscarNoEstoque; inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoEstoque(); } }); btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
       }catch(e){}
