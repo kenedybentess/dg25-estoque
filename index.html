@@ -35,292 +35,114 @@ Error generating stack: `+u.message+`
 <div id="livre-individual-root" style="display:none;"></div>
 <script>
 (function(){
-  const KM="wms_final_materiais", KP="wms_final_posicoes", KC="wms_final_consumos", KR="wms_final_ruas";
-  const FB_BASE="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
-  function getL(){ try{return JSON.parse(localStorage.getItem(KM)||"[]")}catch{return []} }
-  function getP(){ try{return JSON.parse(localStorage.getItem(KP)||"[]")}catch{return []} }
-  function getR(){ try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []} }
-  function getC(){ try{return JSON.parse(localStorage.getItem(KC)||"[]")}catch{return []} }
-
-  function syncConsumosToFirebase(allC){
-    try{
-      // PUT direto - sobrescreve em todos dispositivos
-      fetch(FB_BASE+'/consumos.json', {method:'PUT', body:JSON.stringify(allC), headers:{'Content-Type':'application/json'}})
-      .then(r=>{ console.log('[SYNC] Consumos enviado Firebase:', allC.length); })
-      .catch(()=>{});
-    }catch{}
-  }
-  async function fetchConsumosFromFirebase(){
-    try{
-      const resp = await fetch(FB_BASE+'/consumos.json?'+Date.now(), {cache:'no-store'});
-      if(!resp.ok) return null;
-      const data = await resp.json();
-      if(!data) { localStorage.setItem(KC, JSON.stringify([])); return []; }
-      let arr=[];
-      if(Array.isArray(data)){ arr=data; }
-      else if(typeof data==='object'){
-        arr=Object.values(data).filter(v=>v && typeof v==='object' && v.id);
-        if(arr.length===0){
-          const vals=Object.values(data);
-          if(vals.length>0 && vals[0] && vals[0].sku) arr=vals;
-        }
-      }
-      if(arr.length>=0){
-        const map=new Map();
-        for(const r of arr){ if(r && r.id) map.set(String(r.id), r); }
-        const dedup=Array.from(map.values());
-        localStorage.setItem(KC, JSON.stringify(dedup));
-        return dedup;
-      }
-      return arr;
-    }catch(e){ console.log('fetch FB error', e); return null; }
-  }
-
-  // Sincroniza ao carregar a página e a cada 15s para estorno aparecer em todos
-  (async()=>{ try{ await fetchConsumosFromFirebase(); }catch{} })();
-  setInterval(async()=>{ try{ await fetchConsumosFromFirebase(); }catch{} }, 15000);
-  window.addEventListener('focus', async()=>{ try{ await fetchConsumosFromFirebase(); }catch{} });
-
-  function getAll(){
-    try{
-      const pos=getP(); const mapa=new Map();
-      for(const p of pos){
-        for(const it of (p.itens||[])){
-          const codigo = String(it.codigo||'').trim();
-          if(!codigo) continue;
-          const q=Number(it.qtd)||0;
-          const key=codigo.toLowerCase();
-          if(mapa.has(key)){
-            const e=mapa.get(key); e.total+=q; e.pos.push({posId:p.posId, ri:p.ruaIndex, q, nivel:p.nivel, div:p.div, ruaIndex:p.ruaIndex, item:it});
-          } else {
-            mapa.set(key, {codigo:codigo, sku:codigo, nome:it.descricao||codigo, total:q, pos:[{posId:p.posId, ri:p.ruaIndex, q, nivel:p.nivel, div:p.div, ruaIndex:p.ruaIndex, item:it}], lc:key});
-          }
-        }
-      }
-      return Array.from(mapa.values());
-    }catch{ return []; }
-  }
-
-  function renderLivreModal(){}
+  const KM="wms_final_materiais",KP="wms_final_posicoes",KC="wms_final_consumos",KR="wms_final_ruas";
+  const FB="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
+  function getP(){try{return JSON.parse(localStorage.getItem(KP)||"[]")}catch{return []}}
+  function getR(){try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []}}
+  function getC(){try{return JSON.parse(localStorage.getItem(KC)||"[]")}catch{return []}}
+  function syncC(a){try{fetch(FB+'/consumos.json',{method:'PUT',body:JSON.stringify(a),headers:{'Content-Type':'application/json'}}).catch(()=>{})}catch{}}
+  function syncP(p){try{fetch(FB+'/posicoes.json',{method:'PUT',body:JSON.stringify(p),headers:{'Content-Type':'application/json'}}).catch(()=>{})}catch{}}
+  async function fetchC(){try{const r=await fetch(FB+'/consumos.json?'+Date.now(),{cache:'no-store'});if(!r.ok)return null;const d=await r.json();if(!d)return[];let a=Array.isArray(d)?d:Object.values(d).filter(v=>v&&v.id);const m=new Map();for(const x of a)if(x&&x.id)m.set(String(x.id),x);const u=Array.from(m.values());localStorage.setItem(KC,JSON.stringify(u));return u}catch{return null}}
+  async function fetchP(){try{const r=await fetch(FB+'/posicoes.json?'+Date.now(),{cache:'no-store'});if(!r.ok)return null;const d=await r.json();if(!d)return null;localStorage.setItem(KP,JSON.stringify(d));return d}catch{return null}}
+  (async()=>{try{await fetchC();await fetchP()}catch{}})();
+  setInterval(async()=>{try{await fetchC()}catch{}},15000);
+  window.addEventListener('focus',async()=>{try{await fetchC();await fetchP()}catch{}});
 
   function renderConsumo(){
-    const root=document.getElementById('consumo-root'); if(!root) return;
-    const all=getAll();
-    root.innerHTML=`<div style="max-width:1100px; margin:0 auto; padding:16px; background:#0e0e10; min-height:100vh;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:none; cursor:pointer;">← Voltar</button>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button id="c-sync-fb" style="height:32px; padding:0 12px; border-radius:9999px; background:#3b82f6; color:white; font-size:11px; border:none; cursor:pointer;">🔄 Sincronizar</button>
-          <div style="font-size:12px; color:#71717a;">Total: <span style="color:#10b981; font-weight:bold;">${all.reduce((s,m)=>s+(m.total||0),0)} un</span></div>
+    const root=document.getElementById('consumo-root');if(!root)return;
+    const all=(()=>{try{const pos=getP();const mapa=new Map();for(const p of pos)for(const it of(p.itens||[])){const cod=String(it.codigo||'').trim();if(!cod)continue;const q=Number(it.qtd)||0;const k=cod.toLowerCase();if(mapa.has(k))mapa.get(k).total+=q;else mapa.set(k,{codigo:cod,total:q})}return Array.from(mapa.values())}catch{return[]}})();
+    root.innerHTML=`<div style="max-width:1100px;margin:0 auto;padding:16px;background:#0e0e10;min-height:100vh;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <button id="c-voltar" style="height:36px;padding:0 16px;border-radius:9999px;background:#232326;color:white;border:none;cursor:pointer;">← Voltar</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="c-sync-fb" style="height:32px;padding:0 12px;border-radius:9999px;background:#3b82f6;color:white;font-size:11px;border:none;cursor:pointer;">🔄 Sincronizar</button>
+          <div style="font-size:12px;color:#71717a;">Total: <span style="color:#10b981;font-weight:bold;">${all.reduce((s,m)=>s+(m.total||0),0)} un</span></div>
         </div>
       </div>
-
-      <div style="background:#151518; border:1px solid #10b981; border-radius:16px; padding:14px; margin-bottom:16px;">
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; color:#fbbf24; font-size:11px; font-weight:bold;">
-          <span style="width:8px; height:8px; background:#3b82f6; border-radius:50%; display:inline-block;"></span>
+      <div style="background:#151518;border:1px solid #10b981;border-radius:16px;padding:14px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;color:#fbbf24;font-size:11px;font-weight:bold;">
+          <span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;"></span>
           PESQUISAR CÓDIGO (agora busca em TODAS as posições, mesmo com IDs diferentes)
         </div>
-        <div style="display:flex; gap:10px;">
-          <input id="c-cod" style="flex:1; height:48px; background:#0e0e10; border:1px solid #3a3a40; color:white; border-radius:10px; padding:0 16px; font-size:14px;" placeholder="Digite código exato e ENTER">
-          <button id="c-buscar" style="height:48px; padding:0 22px; border-radius:12px; background:#10b981; color:black; font-weight:bold; font-size:12px; border:none; cursor:pointer; white-space:nowrap;">BUSCAR TODAS LOCALIZAÇÕES</button>
+        <div style="display:flex;gap:10px;">
+          <input id="c-cod" style="flex:1;height:48px;background:#0e0e10;border:1px solid #3a3a40;color:white;border-radius:10px;padding:0 16px;font-size:14px;" placeholder="Digite código exato e ENTER">
+          <button id="c-buscar" style="height:48px;padding:0 22px;border-radius:12px;background:#10b981;color:black;font-weight:bold;font-size:12px;border:none;cursor:pointer;white-space:nowrap;">BUSCAR TODAS LOCALIZAÇÕES</button>
         </div>
         <div id="c-res" style="margin-top:12px;"></div>
-        <div id="c-locais-lista" style="margin-top:12px; display:grid; gap:8px;"></div>
+        <div id="c-locais-lista" style="margin-top:12px;display:grid;gap:8px;"></div>
       </div>
-
-      <div style="background:#151518; border:1px solid #2a2a30; border-radius:16px; padding:16px; margin-bottom:16px;">
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px; color:white; font-size:13px; font-weight:bold;">
-          <span style="background:#232326; border-radius:6px; padding:2px 6px; font-size:12px;">📦</span> Baixa com OP:
+      <div style="background:#151518;border:1px solid #2a2a30;border-radius:16px;padding:16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;color:white;font-size:13px;font-weight:bold;">
+          <span style="background:#232326;border-radius:6px;padding:2px 6px;font-size:12px;">📦</span> Baixa com OP:
         </div>
-        <div style="display:grid; grid-template-columns: 120px 1fr 160px; gap:10px; margin-bottom:12px;">
-          <div>
-            <label style="font-size:10px; color:#71717a; font-weight:bold;">Qtd *</label>
-            <input id="c-qtd" type="number" style="width:100%; height:42px; background:#0e0e10; border:1px solid #10b981; color:white; border-radius:8px; padding:0 12px; margin-top:4px;" placeholder="5">
-          </div>
-          <div>
-            <label style="font-size:10px; color:#fbbf24; font-weight:bold;">OP *</label>
-            <input id="c-ordem" style="width:100%; height:42px; background:#0e0e10; border:1px solid #fbbf24; color:white; border-radius:8px; padding:0 12px; margin-top:4px;" placeholder="OP 12345">
-          </div>
-          <div>
-            <label style="font-size:10px; color:#71717a;">Tipo</label>
-            <select id="c-tipo" style="width:100%; height:42px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:8px; padding:0 10px; margin-top:4px;">
-              <option>Produção</option>
-              <option>Consumo</option>
-              <option>Ajuste</option>
-              <option>Perda</option>
-              <option>Devolução</option>
-            </select>
-          </div>
+        <div style="display:grid;grid-template-columns:120px 1fr 160px;gap:10px;margin-bottom:12px;">
+          <div><label style="font-size:10px;color:#71717a;font-weight:bold;">Qtd *</label><input id="c-qtd" type="number" style="width:100%;height:42px;background:#0e0e10;border:1px solid #10b981;color:white;border-radius:8px;padding:0 12px;margin-top:4px;" placeholder="5"></div>
+          <div><label style="font-size:10px;color:#fbbf24;font-weight:bold;">OP *</label><input id="c-ordem" style="width:100%;height:42px;background:#0e0e10;border:1px solid #fbbf24;color:white;border-radius:8px;padding:0 12px;margin-top:4px;" placeholder="OP 12345"></div>
+          <div><label style="font-size:10px;color:#71717a;">Tipo</label><select id="c-tipo" style="width:100%;height:42px;background:#0e0e10;border:1px solid #2a2a30;color:white;border-radius:8px;padding:0 10px;margin-top:4px;"><option>Produção</option><option>Consumo</option><option>Ajuste</option><option>Perda</option><option>Devolução</option></select></div>
         </div>
-        <div style="margin-bottom:14px;">
-          <label style="font-size:10px; color:#71717a;">Obs</label>
-          <input id="c-obs" style="width:100%; height:42px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:8px; padding:0 12px; margin-top:4px;" placeholder="Obs...">
-        </div>
-        <button id="c-btn" style="width:100%; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:14px; border:none; cursor:pointer;">✓ CONFIRMAR BAIXA COM OP</button>
-        <div id="c-msg" style="display:none; margin-top:12px; padding:12px; border-radius:10px; white-space:pre-wrap;"></div>
+        <div style="margin-bottom:14px;"><label style="font-size:10px;color:#71717a;">Obs</label><input id="c-obs" style="width:100%;height:42px;background:#0e0e10;border:1px solid #2a2a30;color:white;border-radius:8px;padding:0 12px;margin-top:4px;" placeholder="Obs..."></div>
+        <button id="c-btn" style="width:100%;height:48px;border-radius:9999px;background:#10b981;color:black;font-weight:bold;font-size:14px;border:none;cursor:pointer;">✓ CONFIRMAR BAIXA COM OP</button>
+        <div id="c-msg" style="display:none;margin-top:12px;padding:12px;border-radius:10px;white-space:pre-wrap;"></div>
       </div>
-
-      <div style="background:#151518; border:1px solid #2a2a30; border-radius:16px; padding:14px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-          <div style="display:flex; align-items:center; gap:8px;"><span style="font-size:13px;">📋</span><span style="color:white; font-weight:bold; font-size:13px;">HISTÓRICO</span><span id="c-hist-count" style="color:#71717a; font-size:11px;">0 registros</span><span style="background:#3b82f6; color:white; font-size:9px; padding:2px 6px; border-radius:9999px;">SYNC TODOS DISPOSITIVOS</span></div>
-          <div style="display:flex; gap:8px;">
-            <input id="c-hist-filter" style="height:32px; width:180px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:9999px; padding:0 12px; font-size:11px;" placeholder="Buscar OP ou código...">
-            <button id="c-hist-limpar" style="height:32px; padding:0 14px; border-radius:9999px; background:#232326; color:white; font-size:11px; border:none; cursor:pointer;">Limpar</button>
-          </div>
+      <div style="background:#151518;border:1px solid #2a2a30;border-radius:16px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;">📋</span><span style="color:white;font-weight:bold;font-size:13px;">HISTÓRICO</span><span id="c-hist-count" style="color:#71717a;font-size:11px;">0 registros</span><span style="background:#3b82f6;color:white;font-size:9px;padding:2px 6px;border-radius:9999px;">SYNC TODOS DISPOSITIVOS</span></div>
+          <div style="display:flex;gap:8px;"><input id="c-hist-filter" style="height:32px;width:180px;background:#0e0e10;border:1px solid #2a2a30;color:white;border-radius:9999px;padding:0 12px;font-size:11px;" placeholder="Buscar OP ou código..."><button id="c-hist-limpar" style="height:32px;padding:0 14px;border-radius:9999px;background:#232326;color:white;font-size:11px;border:none;cursor:pointer;">Limpar</button></div>
         </div>
-        <div id="c-hist-loading" style="color:#3b82f6; font-size:11px; text-align:center; padding:10px; display:none;">🔄 Sincronizando histórico do Firebase...</div>
-        <div style="overflow:auto;">
-          <table style="width:100%; border-collapse:collapse; font-size:11px;">
-            <thead><tr style="color:#71717a; font-size:10px; text-align:left; border-bottom:1px solid #2a2a30;"><th style="padding:8px 6px; font-weight:normal;">Data</th><th style="padding:8px 6px; font-weight:normal;">Código</th><th style="padding:8px 6px; font-weight:normal;">Qtd</th><th style="padding:8px 6px; font-weight:normal;">OP</th><th style="padding:8px 6px; font-weight:normal;">Localização</th><th style="padding:8px 6px; font-weight:normal;">Obs</th><th style="padding:8px 6px; font-weight:normal;">Ação</th></tr></thead>
-            <tbody id="c-hist-tbody"></tbody>
-          </table>
-        </div>
-        <div id="c-hist-empty" style="color:#3a3a40; font-size:11px; text-align:center; padding:20px; display:none;">Nenhum registro</div>
+        <div id="c-hist-loading" style="color:#3b82f6;font-size:11px;text-align:center;padding:10px;display:none;">🔄 Sincronizando...</div>
+        <div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="color:#71717a;font-size:10px;text-align:left;border-bottom:1px solid #2a2a30;"><th style="padding:8px 6px;">Data</th><th style="padding:8px 6px;">Código</th><th style="padding:8px 6px;">Qtd</th><th style="padding:8px 6px;">OP</th><th style="padding:8px 6px;">Localização</th><th style="padding:8px 6px;">Obs</th><th style="padding:8px 6px;">Ação</th></tr></thead><tbody id="c-hist-tbody"></tbody></table></div>
+        <div id="c-hist-empty" style="color:#3a3a40;font-size:11px;text-align:center;padding:20px;display:none;">Nenhum registro</div>
       </div>
     </div>`;
-
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
-    const inp=document.getElementById('c-cod');
-    const res=document.getElementById('c-res'); const locaisDiv=document.getElementById('c-locais-lista');
+    const inp=document.getElementById('c-cod'); const res=document.getElementById('c-res'); const locaisDiv=document.getElementById('c-locais-lista');
     let sel=null; let selLocais=[];
-
-    function limparCamposConsumo(){
-      try{
-        document.getElementById('c-cod').value='';
-        document.getElementById('c-ordem').value='';
-        document.getElementById('c-qtd').value='';
-        document.getElementById('c-obs').value='';
-        document.getElementById('c-tipo').selectedIndex=0;
-        document.getElementById('c-res').innerHTML='';
-        document.getElementById('c-locais-lista').innerHTML='';
-        sel=null; selLocais=[];
-        setTimeout(()=>{ try{ document.getElementById('c-cod').focus(); }catch{} },100);
-      }catch(e){}
-    }
-
+    function limpar(){try{document.getElementById('c-cod').value='';document.getElementById('c-ordem').value='';document.getElementById('c-qtd').value='';document.getElementById('c-obs').value='';document.getElementById('c-tipo').selectedIndex=0;document.getElementById('c-res').innerHTML='';document.getElementById('c-locais-lista').innerHTML='';sel=null;selLocais=[];setTimeout(()=>{try{document.getElementById('c-cod').focus()}catch{}},100)}catch{}}
     function buscar(){
-      const codRaw=inp.value.trim(); if(!codRaw){ res.innerHTML='<span style="color:#fbbf24; font-size:11px;">Digite um código</span>'; return; }
-      const cod=codRaw.toLowerCase();
-      const pos=getP(); const ruas=getR(); const achados=[];
-      for(const p of pos){
-        for(const it of (p.itens||[])){
-          const c=String(it.codigo||'').toLowerCase().trim();
-          if(c===cod || c.includes(cod)){
-            const ruaNome=ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
-            achados.push({pos:p, item:it, ruaNome, posId:p.posId, ruaIndex:p.ruaIndex, nivel:p.nivel, div:p.div, qtd:Number(it.qtd)||0});
-          }
-        }
-      }
-      if(achados.length===0){
-        res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px; font-size:12px;">❌ ${codRaw} não encontrado em nenhuma posição</div>`;
-        locaisDiv.innerHTML=''; sel=null; selLocais=[];
-      } else {
-        achados.sort((a,b)=>(a.ruaIndex-b.ruaIndex)||(a.nivel-b.nivel)||(a.div-b.div));
-        const total=achados.reduce((s,a)=>s+a.qtd,0);
-        res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); padding:8px 10px; border-radius:8px; font-size:12px;">✅ ${achados.length} localização(ões) com <b>${codRaw}</b> — Total ${total} un</div>`;
-        sel={codigo:achados[0].item.codigo, nome:achados[0].item.descricao||achados[0].item.codigo, total:total, achados:achados};
-        selLocais=achados.map((a,i)=>({...a, idx:i, selecionado:true}));
-        locaisDiv.innerHTML=achados.map((a,i)=>{
-          return `<label style="background:#0e0e10; border:1px solid #10b981; border-radius:10px; padding:10px; display:flex; gap:10px; align-items:center; cursor:pointer;">
-            <input type="checkbox" checked data-idx="${i}" class="c-loc-chk" style="width:18px; height:18px; accent-color:#10b981;">
-            <div style="flex:1;"><div style="color:white; font-weight:bold; font-size:12px;">${a.item.codigo}</div><div style="color:#a78bfa; font-size:11px;">📍 ${a.ruaNome} • N${String(a.nivel).padStart(2,'0')} • D${String(a.div).padStart(2,'0')} • ${a.posId} — Qtd: ${a.qtd}</div></div>
-          </label>`;
-        }).join('');
-        locaisDiv.querySelectorAll('.c-loc-chk').forEach(chk=>{
-          chk.addEventListener('change',()=>{
-            const idx=Number(chk.dataset.idx);
-            selLocais[idx].selecionado=chk.checked;
-          });
-        });
-      }
+      const codRaw=inp.value.trim(); if(!codRaw){res.innerHTML='<span style="color:#fbbf24;font-size:11px;">Digite um código</span>';return;}
+      const cod=codRaw.toLowerCase(); const pos=getP(); const ruas=getR(); const achados=[];
+      for(const p of pos) for(const it of(p.itens||[])){const c=String(it.codigo||'').toLowerCase().trim(); if(c===cod||c.includes(cod)){const rn=ruas[p.ruaIndex]?.nome||`Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p,item:it,ruaNome:rn,posId:p.posId,ruaIndex:p.ruaIndex,nivel:p.nivel,div:p.div,qtd:Number(it.qtd)||0,codigo:it.codigo});}}
+      if(!achados.length){res.innerHTML=`<div style="color:#ef4444;background:rgba(239,68,68,0.1);padding:10px;border-radius:10px;font-size:12px;">❌ ${codRaw} não encontrado</div>`; locaisDiv.innerHTML=''; sel=null; selLocais=[]; return;}
+      achados.sort((a,b)=>(a.ruaIndex-b.ruaIndex)||(a.nivel-b.nivel)||(a.div-b.div));
+      const total=achados.reduce((s,a)=>s+a.qtd,0);
+      res.innerHTML=`<div style="color:#10b981;background:rgba(16,185,129,0.1);padding:8px 10px;border-radius:8px;font-size:12px;">✅ ${achados.length} localização(ões) com <b>${codRaw}</b> — Total ${total} un</div>`;
+      sel={codigo:achados[0].codigo,nome:achados[0].item.descricao||achados[0].codigo,total,achados};
+      selLocais=achados.map((a,i)=>({...a,idx:i,selecionado:true}));
+      locaisDiv.innerHTML=achados.map((a,i)=>`<label style="background:#0e0e10;border:1px solid #10b981;border-radius:10px;padding:10px;display:flex;gap:10px;align-items:center;cursor:pointer;"><input type="checkbox" checked data-idx="${i}" class="c-loc-chk" style="width:18px;height:18px;accent-color:#10b981;"><div style="flex:1;"><div style="color:white;font-weight:bold;font-size:12px;">${a.codigo}</div><div style="color:#a78bfa;font-size:11px;">📍 ${a.ruaNome} • N${String(a.nivel).padStart(2,'0')} • D${String(a.div).padStart(2,'0')} • ${a.posId} — Qtd: ${a.qtd}</div></div></label>`).join('');
+      locaisDiv.querySelectorAll('.c-loc-chk').forEach(chk=>{ chk.addEventListener('change',()=>{ selLocais[Number(chk.dataset.idx)].selecionado=chk.checked; }); });
     }
-
     document.getElementById('c-buscar').onclick=buscar;
     inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); buscar(); } });
-
     async function renderHist(filtro=''){
       const tbody=document.getElementById('c-hist-tbody'); const count=document.getElementById('c-hist-count'); const empty=document.getElementById('c-hist-empty'); const loading=document.getElementById('c-hist-loading');
-      loading.style.display='block';
-      try{ await fetchConsumosFromFirebase(); }catch{}
-      loading.style.display='none';
-      let allC=getC().slice().reverse();
-      const f=filtro.toLowerCase();
-      if(f){ allC=allC.filter(r=> String(r.ordem||'').toLowerCase().includes(f) || String(r.sku||r.codigo||'').toLowerCase().includes(f)); }
+      loading.style.display='block'; try{ await fetchC(); }catch{} loading.style.display='none';
+      let allC=getC().slice().reverse(); const f=filtro.toLowerCase(); if(f) allC=allC.filter(r=>String(r.ordem||'').toLowerCase().includes(f)||String(r.sku||'').toLowerCase().includes(f));
       count.textContent=allC.length+' registros';
-      if(!allC.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
-      empty.style.display='none';
-      tbody.innerHTML=allC.map(r=>{
-        const data=r.data||''; const codigo=r.sku||r.codigo||''; const qtd=r.qtd||0; const op=r.ordem||r.op||''; const loc=r.locais||''; const obs=r.obs||'';
-        return `<tr style="border-bottom:1px solid #1e1e22;">
-          <td style="padding:10px 6px; color:#a1a1aa;">${data}</td>
-          <td style="padding:10px 6px; color:white; font-weight:bold;">${codigo}</td>
-          <td style="padding:10px 6px; color:#10b981;">${qtd}</td>
-          <td style="padding:10px 6px;"><span style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; padding:2px 8px; font-size:10px;">${op}</span></td>
-          <td style="padding:10px 6px; color:#71717a; font-size:10px;">${loc}</td>
-          <td style="padding:10px 6px; color:#71717a; font-size:10px;">${obs}</td>
-          <td style="padding:10px 6px;"><button onclick="window.estornarConsumo('${r.id}')" style="height:26px; padding:0 10px; border-radius:9999px; background:#2a2a30; color:#ef4444; font-size:10px; border:1px solid #3a3a40; cursor:pointer;">↩️ Estornar</button></td>
-        </tr>`;
-      }).join('');
+      if(!allC.length){ tbody.innerHTML=''; empty.style.display='block'; return; } empty.style.display='none';
+      tbody.innerHTML=allC.map(r=>`<tr style="border-bottom:1px solid #1e1e22;"><td style="padding:10px 6px;color:#a1a1aa;">${r.data||''}</td><td style="padding:10px 6px;color:white;font-weight:bold;">${r.sku||''}</td><td style="padding:10px 6px;color:#10b981;">${r.qtd||0}</td><td style="padding:10px 6px;"><span style="background:#fbbf24;color:black;font-weight:bold;border-radius:9999px;padding:2px 8px;font-size:10px;">${r.ordem||''}</span></td><td style="padding:10px 6px;color:#71717a;font-size:10px;">${r.locais||''}</td><td style="padding:10px 6px;color:#71717a;font-size:10px;">${r.obs||''}</td><td style="padding:10px 6px;"><button onclick="window.estornarConsumo('${r.id}')" style="height:26px;padding:0 10px;border-radius:9999px;background:#2a2a30;color:#ef4444;font-size:10px;border:1px solid #3a3a40;cursor:pointer;">↩️ Estornar</button></td></tr>`).join('');
     }
-
     window.estornarConsumo = async function(id){
       try{
-        let allC=getC(); const reg=allC.find(r=>String(r.id)===String(id));
-        if(!reg){ 
-          // tenta buscar do Firebase antes
-          const fb=await fetchConsumosFromFirebase();
-          allC=getC();
-          const reg2=allC.find(r=>String(r.id)===String(id));
-          if(!reg2){ alert('Registro não encontrado - já foi estornado em outro dispositivo? Sincronizando...'); renderHist(document.getElementById('c-hist-filter').value||''); return; }
-          return window.estornarConsumo(id);
-        }
-        if(!confirm(`ESTORNAR?\nOP: ${reg.ordem}\nCódigo: ${reg.sku}\nQtd: ${reg.qtd}\n\nDevolver ao estoque e APAGAR em TODOS os dispositivos?`)) return;
-        let pos=getP(); let restaurado=0;
-        if(reg.log){
-          const linhas=reg.log.split('\n');
-          for(const linha of linhas){
-            const m=linha.match(/(.+?)\s+([A-Z0-9\-_]+):\s*\d+->\d+\s*\(-(\d+)\)/);
-            if(m){ const posId=m[2].trim(); const q=Number(m[3])||0; for(const p of pos){ if(p.posId===posId){ let it=(p.itens||[]).find(i=>String(i.codigo||'').toLowerCase()===String(reg.sku||'').toLowerCase()); if(it){ it.qtd=(Number(it.qtd)||0)+q; } else { if(!p.itens) p.itens=[]; p.itens.push({codigo:reg.sku, descricao:reg.nome, qtd:q, materialId:reg.materialId}); } restaurado+=q; break; } } }
-          }
-        }
-        if(restaurado===0){
-          for(const p of pos){ const it=(p.itens||[]).find(i=>String(i.codigo||'').toLowerCase()===String(reg.sku||'').toLowerCase()); if(it){ it.qtd=(Number(it.qtd)||0)+Number(reg.qtd); restaurado+=Number(reg.qtd); break; } }
-          if(restaurado===0 && pos.length>0){ if(!pos[0].itens) pos[0].itens=[]; pos[0].itens.push({codigo:reg.sku, descricao:reg.nome, qtd:Number(reg.qtd), materialId:reg.materialId}); restaurado+=Number(reg.qtd); }
-        }
-        localStorage.setItem(KP, JSON.stringify(pos));
-        try{ fetch(FB_BASE+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
-
-        // REMOVE DO HISTORICO E SINCRONIZA PARA TODOS DISPOSITIVOS VIA PUT
-        const novos=allC.filter(r=>String(r.id)!==String(id));
-        localStorage.setItem(KC, JSON.stringify(novos));
-        // PUT para Firebase - sobrescreve para todos
-        syncConsumosToFirebase(novos);
-
-        alert(`✅ ESTORNO OK - ${restaurado} un devolvidos e removido em TODOS os dispositivos`);
+        let allC=getC(); let reg=allC.find(r=>String(r.id)===String(id));
+        if(!reg){ const fb=await fetchC(); allC=getC(); reg=allC.find(r=>String(r.id)===String(id)); if(!reg){ alert('Já estornado'); renderHist(); return; } }
+        if(!confirm(`ESTORNAR? OP: ${reg.ordem} Código: ${reg.sku} Qtd: ${reg.qtd}`)) return;
+        let pos=getP(); let rest=0;
+        if(reg.log){ const linhas=reg.log.split('\n'); for(const linha of linhas){ const m=linha.match(/\s+([A-Z0-9\-_]+):\s*\d+->\d+\s*\(-(\d+)\)/); if(m){ const posId=m[1].trim(); const q=Number(m[2])||0; for(const p of pos){ if(p.posId===posId){ let it=(p.itens||[]).find(i=>String(i.codigo||'').toLowerCase()===String(reg.sku||'').toLowerCase()); if(it){ it.qtd=(Number(it.qtd)||0)+q; } else { if(!p.itens) p.itens=[]; p.itens.push({codigo:reg.sku,descricao:reg.nome,qtd:q,materialId:reg.materialId}); } rest+=q; break; } } } } }
+        if(rest===0){ for(const p of pos){ const it=(p.itens||[]).find(i=>String(i.codigo||'').toLowerCase()===String(reg.sku||'').toLowerCase()); if(it){ it.qtd=(Number(it.qtd)||0)+Number(reg.qtd); rest+=Number(reg.qtd); break; } } if(rest===0 && pos.length>0){ if(!pos[0].itens) pos[0].itens=[]; pos[0].itens.push({codigo:reg.sku,descricao:reg.nome,qtd:Number(reg.qtd),materialId:reg.materialId}); rest+=Number(reg.qtd); } }
+        localStorage.setItem(KP,JSON.stringify(pos)); syncP(pos);
+        const novos=allC.filter(r=>String(r.id)!==String(id)); localStorage.setItem(KC,JSON.stringify(novos)); syncC(novos);
+        alert(`✅ ESTORNO OK - ${rest} un devolvidos`);
         renderHist(document.getElementById('c-hist-filter').value||'');
       }catch(e){ alert('Erro: '+e.message); }
     };
-
-    document.getElementById('c-hist-filter').addEventListener('input', e=>{ renderHist(e.target.value); });
-    document.getElementById('c-hist-limpar').onclick=()=>{ 
-      if(confirm('Limpar todo histórico em TODOS os dispositivos?')){
-        const vazio=[]; 
-        localStorage.setItem(KC, JSON.stringify(vazio)); 
-        syncConsumosToFirebase(vazio); 
-        renderHist(); 
-      } 
-    };
-    document.getElementById('c-sync-fb').onclick=async()=>{ 
-      const btn=document.getElementById('c-sync-fb'); btn.textContent='🔄 Sincronizando...';
-      await fetchConsumosFromFirebase(); 
-      renderHist(document.getElementById('c-hist-filter').value||'');
-      btn.textContent='🔄 Sincronizar';
-    };
-
+    document.getElementById('c-hist-filter').addEventListener('input',e=>{ renderHist(e.target.value); });
+    document.getElementById('c-hist-limpar').onclick=()=>{ if(confirm('Limpar todo histórico em TODOS os dispositivos?')){ const v=[]; localStorage.setItem(KC,JSON.stringify(v)); syncC(v); renderHist(); } };
+    document.getElementById('c-sync-fb').onclick=async()=>{ const btn=document.getElementById('c-sync-fb'); btn.textContent='🔄 Sincronizando...'; await fetchC(); await fetchP(); renderHist(); btn.textContent='🔄 Sincronizar'; };
     document.getElementById('c-btn').onclick=()=>{
       try{
         const ordem=(document.getElementById('c-ordem').value||'').trim();
-        const q=Number((document.getElementById('c-qtd').value||'').replace(',','.'));
+        const qtdRaw=(document.getElementById('c-qtd').value||'').replace(',','.');
+        const q=Number(qtdRaw);
         const tipo=(document.getElementById('c-tipo').value||'Produção');
         const obs=(document.getElementById('c-obs').value||'').trim();
         if(!ordem){ alert('Informe OP *'); return; }
@@ -333,40 +155,37 @@ Error generating stack: `+u.message+`
         let rest=q; let pos=getP(); let logs=[];
         for(const selLoc of selecionados){
           if(rest<=0) break;
-          for(const p of pos){
-            if(p.posId===selLoc.posId && p.ruaIndex===selLoc.ruaIndex){
-              for(let i=0;i<(p.itens||[]).length;i++){
-                if(rest<=0) break;
-                const it=p.itens[i];
-                if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
-                  const disp=Number(it.qtd)||0; if(disp<=0) continue;
-                  const usar=Math.min(disp, rest);
-                  const ruaNome=getR()[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`;
-                  logs.push(`${ruaNome} ${p.posId}: ${disp}->${disp-usar} (-${usar})`);
-                  it.qtd=disp-usar; rest-=usar;
-                  if(it.qtd<=0){ p.itens.splice(i,1); i--; }
-                  break;
-                }
-              }
+          const pIdx=pos.findIndex(p=>p.posId===selLoc.posId && p.ruaIndex===selLoc.ruaIndex);
+          if(pIdx===-1) continue;
+          const p=pos[pIdx];
+          for(let i=0;i<(p.itens||[]).length;i++){
+            if(rest<=0) break;
+            const it=p.itens[i];
+            if(String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
+              const disp=Number(it.qtd)||0; if(disp<=0) continue;
+              const usar=Math.min(disp,rest);
+              const rn=getR()[p.ruaIndex]?.nome||`Rua ${String(p.ruaIndex+1).padStart(2,'0')}`;
+              logs.push(`${rn} ${p.posId}: ${disp}->${disp-usar} (-${usar})`);
+              it.qtd=disp-usar; rest-=usar;
+              if(it.qtd<=0){ p.itens.splice(i,1); i--; }
+              break;
             }
           }
         }
+        if(rest>0){ alert('Erro: faltam '+rest+' un'); return; }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        if(rest>0){ alert('Faltam '+rest); return; }
-        localStorage.setItem(KP, JSON.stringify(pos));
-        try{ fetch(FB_BASE+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
-        const reg={id:Date.now(), materialId:sel.achados[0]?.item?.materialId||sel.codigo, sku:sel.codigo, codigo:sel.codigo, nome:sel.nome, qtd:q, ordem:ordem, op:ordem, tipo:tipo, obs:obs, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n'), locais:selecionados.map(s=>`${s.ruaNome} ${s.posId}`).join(', ')};
-        const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
-        syncConsumosToFirebase(allC);
+        localStorage.setItem(KP,JSON.stringify(pos));
+        syncP(pos);
+        const reg={id:Date.now(),materialId:sel.achados[0]?.item?.materialId||sel.codigo,sku:sel.codigo,codigo:sel.codigo,nome:sel.nome,qtd:q,ordem,tipo,obs,op:ordem,data:new Date().toLocaleString('pt-BR'),log:logs.join('\n'),locais:selecionados.map(s=>`${s.ruaNome} ${s.posId}`).join(', ')};
+        const allC=getC(); allC.push(reg); localStorage.setItem(KC,JSON.stringify(allC)); syncC(allC);
         const msg=document.getElementById('c-msg');
-        msg.innerHTML=`<div style="color:#10b981; font-weight:bold;">✅ BAIXA COM OP REALIZADA - SALVO EM TODOS DISPOSITIVOS</div><div style="margin-top:6px;"><span style="background:#fbbf24; color:black; font-weight:bold; border-radius:9999px; padding:4px 10px; font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo}</div><div style="font-size:11px; color:#a1a1aa; margin-top:6px;">${logs.join('<br>')}</div>`;
+        msg.innerHTML=`<div style="color:#10b981;font-weight:bold;font-size:14px;">✅ BAIXA COM OP REALIZADA - ESTOQUE ATUALIZADO</div><div style="margin-top:8px;"><span style="background:#fbbf24;color:black;font-weight:bold;border-radius:9999px;padding:4px 10px;font-size:12px;">📋 OP ${ordem}</span> • Qtd ${q} • ${tipo} • <span style="color:#10b981;">Estoque baixado!</span></div><div style="font-size:11px;color:#a1a1aa;margin-top:8px;">${logs.join('<br>')}</div>`;
         msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.border='1px solid #10b981';
         renderHist(document.getElementById('c-hist-filter').value||'');
-        limparCamposConsumo();
+        limpar();
         setTimeout(()=>{ msg.style.display='none'; },5000);
-      }catch(e){ alert(e.message); }
+      }catch(e){ alert('Erro: '+e.message); console.error(e); }
     };
-
     renderHist();
   }
 
@@ -380,55 +199,35 @@ Error generating stack: `+u.message+`
         const ruas=getR();
         const bar=document.createElement('div');
         bar.id='pesquisa-estoque-bar-v20';
-        bar.style.cssText='background:#151518; border:1px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;';
-        bar.innerHTML=`
-          <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:12px; display:flex; align-items:center; gap:6px;"><span style="width:8px; height:8px; background:#3b82f6; border-radius:50%; display:inline-block;"></span>PESQUISAR CÓDIGO (agora busca em TODAS as posições, mesmo com IDs diferentes)</div><div style="font-size:10px; color:#71717a;">${ruas.length} ruas</div></div>
-          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v20" style="flex:1; height:44px; background:#0e0e10; border:1px solid #3a3a40; color:white; border-radius:10px; padding:0 14px; font-size:13px;" placeholder="Digite código exato e ENTER"><button id="estoque-busca-btn-v20" style="height:44px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold; font-size:11px;">BUSCAR TODAS LOCALIZAÇÕES</button><button id="estoque-busca-limpar-v20" style="height:44px; padding:0 12px; border-radius:10px; background:#232326; color:white; font-size:11px;">Limpar</button></div>
-          <div id="estoque-busca-res-v20" style="margin-top:12px;"></div>
-        `;
+        bar.style.cssText='background:#151518;border:1px solid #7c3aed;border-radius:16px;padding:14px;margin-bottom:14px;';
+        bar.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:10px;"><div style="color:white;font-weight:bold;font-size:12px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;"></span>PESQUISAR CÓDIGO (agora busca em TODAS as posições, mesmo com IDs diferentes)</div><div style="font-size:10px;color:#71717a;">${ruas.length} ruas</div></div><div style="display:flex;gap:8px;"><input id="estoque-busca-input-v20" style="flex:1;height:44px;background:#0e0e10;border:1px solid #3a3a40;color:white;border-radius:10px;padding:0 14px;font-size:13px;" placeholder="Digite código exato e ENTER"><button id="estoque-busca-btn-v20" style="height:44px;padding:0 18px;border-radius:10px;background:#10b981;color:black;font-weight:bold;font-size:11px;">BUSCAR TODAS LOCALIZAÇÕES</button><button id="estoque-busca-limpar-v20" style="height:44px;padding:0 12px;border-radius:10px;background:#232326;color:white;font-size:11px;">Limpar</button></div><div id="estoque-busca-res-v20" style="margin-top:12px;"></div>`;
         main.prepend(bar);
-        const inp=document.getElementById('estoque-busca-input-v20');
-        const btn=document.getElementById('estoque-busca-btn-v20');
-        const btnLimpar=document.getElementById('estoque-busca-limpar-v20');
-        const res=document.getElementById('estoque-busca-res-v20');
+        const inp=document.getElementById('estoque-busca-input-v20'); const btn=document.getElementById('estoque-busca-btn-v20'); const btnLimpar=document.getElementById('estoque-busca-limpar-v20'); const res=document.getElementById('estoque-busca-res-v20');
         function buscarNoEstoque(){
           const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
           const pos=getP(); const ruas=getR(); const achados=[];
-          for(const p of pos){ for(const it of (p.itens||[])){ if(String(it.codigo||'').toLowerCase().includes(cod)){ const ruaNome = ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p, item:it, ruaNome}); } } }
-          if(achados.length===0){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px; font-size:12px;">❌ ${cod} não encontrado</div>`; }
-          else {
-            res.innerHTML=`<div style="background:#0e0e10; border:1px solid #10b981; border-radius:12px; padding:12px;"><div style="color:#10b981; font-weight:bold; margin-bottom:10px; font-size:12px;">✅ ${achados.length} localização(ões) (TODAS posições):</div>${achados.map(a=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:10px; display:flex; gap:12px; margin-bottom:8px;"><div style="background:#7c3aed; border-radius:8px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white; font-weight:bold; font-size:12px;">${a.item.codigo}</div><div style="color:#a1a1aa; font-size:11px;">${a.item.descricao||''}</div><div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:3px 8px; font-size:10px; color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#10b981; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">Qtd: ${a.item.qtd}</span></div></div></div>`).join('')}</div>`;
-          }
+          for(const p of pos) for(const it of(p.itens||[])) if(String(it.codigo||'').toLowerCase().includes(cod)){ const rn=ruas[p.ruaIndex]?.nome||`Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p,item:it,ruaNome:rn}); }
+          if(!achados.length){ res.innerHTML=`<div style="color:#ef4444;background:rgba(239,68,68,0.1);padding:10px;border-radius:10px;font-size:12px;">❌ ${cod} não encontrado</div>`; }
+          else{ res.innerHTML=`<div style="background:#0e0e10;border:1px solid #10b981;border-radius:12px;padding:12px;"><div style="color:#10b981;font-weight:bold;margin-bottom:10px;font-size:12px;">✅ ${achados.length} localização(ões):</div>${achados.map(a=>`<div style="background:#151518;border:1px solid #2a2a30;border-radius:10px;padding:10px;display:flex;gap:12px;margin-bottom:8px;"><div style="background:#7c3aed;border-radius:8px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:10px;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white;font-weight:bold;font-size:12px;">${a.item.codigo}</div><div style="color:#a1a1aa;font-size:11px;">${a.item.descricao||''}</div><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><span style="background:#0e0e10;border:1px solid #2a2a30;border-radius:9999px;padding:3px 8px;font-size:10px;color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#10b981;color:black;border-radius:9999px;padding:3px 8px;font-size:10px;font-weight:bold;">Qtd: ${a.item.qtd}</span></div></div></div>`).join('')}</div>`; }
         }
-        btn.onclick=buscarNoEstoque; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoEstoque(); } }); btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
+        btn.onclick=buscarNoEstoque; inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); buscarNoEstoque(); } }); btnLimpar.onclick=()=>{ inp.value=''; res.innerHTML=''; };
       }catch(e){}
-    }, 800);
+    },800);
   }
 
   function openConsumo(){ const r=document.getElementById('consumo-root'); renderConsumo(); r.style.display='block'; document.body.style.overflow='hidden'; }
-
   function inject(){
     try{
       let bar=null;
       for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ bar=d; break; } }
       if(!bar) return false;
       if(bar.querySelector('#btn-v20-consumo')) return true;
-      const btnConsumo=document.createElement('button');
-      btnConsumo.id='btn-v20-consumo'; btnConsumo.textContent='📦 Consumo';
-      btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;';
-      btnConsumo.onclick=openConsumo;
-      bar.appendChild(btnConsumo);
-      renderEstoqueSearch();
-      return true;
+      const btn=document.createElement('button'); btn.id='btn-v20-consumo'; btn.textContent='📦 Consumo'; btn.style.cssText='height:36px;padding:0 18px;border-radius:9999px;font-size:13px;border:2px solid #10b981;background:#10b981;color:black;font-weight:bold;margin-right:8px;'; btn.onclick=openConsumo; bar.appendChild(btn); renderEstoqueSearch(); return true;
     }catch{ return false; }
   }
-  function init(){
-    setTimeout(()=>{
-      let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } }, 600);
-    }, 1000);
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
-  window.addEventListener('load', init);
+  function init(){ setTimeout(()=>{ let t=0; const iv=setInterval(()=>{ t++; try{ if(inject()||t>120) clearInterval(iv); }catch{ clearInterval(iv); } },600); },1000); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+  window.addEventListener('load',init);
 })();
 </script>
 </body></html>
