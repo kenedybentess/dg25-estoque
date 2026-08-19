@@ -32,11 +32,10 @@ Error generating stack: `+u.message+`
   
 
 <div id="consumo-root" style="display:none; position:fixed; inset:0; z-index:999999; background:#0e0e10; overflow:auto;"></div>
-<div id="livre-individual-root" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.85); overflow:auto; align-items:center; justify-content:center;"></div>
+<div id="livre-individual-root" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.85); overflow:auto; display:none; align-items:center; justify-content:center;"></div>
 <script>
 (function(){
   const KM="wms_final_materiais", KP="wms_final_posicoes", KC="wms_final_consumos", KR="wms_final_ruas";
-  const FB="https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final";
   function getL(){ try{return JSON.parse(localStorage.getItem(KM)||"[]")}catch{return []} }
   function getP(){ try{return JSON.parse(localStorage.getItem(KP)||"[]")}catch{return []} }
   function getR(){ try{return JSON.parse(localStorage.getItem(KR)||"[]")}catch{return []} }
@@ -47,15 +46,15 @@ Error generating stack: `+u.message+`
       const livre=getL(); const pos=getP(); const mapa=new Map();
       for(const m of livre){
         let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
-        mapa.set(String(m.id), {id:m.id, codigo:m.codigo||m.sku||'', sku:m.sku||m.codigo||'', nome:m.nome||m.descricao||'', total:s, livre:s, aloc:0, pos:[], lc:(m.codigo||m.sku||'').toLowerCase(), ln:(m.nome||m.descricao||'').toLowerCase()});
+        mapa.set(String(m.id), {id:m.id, codigo:m.codigo||m.sku||'', sku:m.sku||m.codigo||'', nome:m.nome||m.descricao||'', total:s, livre:s, aloc:0, pos:[], lc:(m.codigo||m.sku||'').toLowerCase()});
       }
       for(const p of pos){
         for(const it of (p.itens||[])){
           const id=String(it.materialId); const q=Number(it.qtd)||0;
           if(mapa.has(id)){
-            const e=mapa.get(id); e.aloc+=q; e.total=e.livre+e.aloc; e.pos.push({posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q, codigo:it.codigo, desc:it.descricao});
+            const e=mapa.get(id); e.aloc+=q; e.total=e.livre+e.aloc; e.pos.push({posId:p.posId, ri:p.ruaIndex, q});
           } else {
-            mapa.set(id, {id:it.materialId, codigo:it.codigo||'', sku:it.codigo||'', nome:it.descricao||'', total:q, livre:0, aloc:q, pos:[{posId:p.posId, ri:p.ruaIndex, ni:p.nivel, dv:p.div, q, codigo:it.codigo, desc:it.descricao}], lc:(it.codigo||'').toLowerCase(), ln:(it.descricao||'').toLowerCase()});
+            mapa.set(id, {id:it.materialId, codigo:it.codigo||'', sku:it.codigo||'', nome:it.descricao||'', total:q, livre:0, aloc:q, pos:[{posId:p.posId, ri:p.ruaIndex, q}], lc:(it.codigo||'').toLowerCase()});
           }
         }
       }
@@ -63,30 +62,49 @@ Error generating stack: `+u.message+`
     }catch{ return []; }
   }
 
+  // ===== MODAL ADICIONAR CÓDIGO INDIVIDUAL NO LIVRE =====
   function renderLivreModal(){
     const root=document.getElementById('livre-individual-root');
     root.innerHTML=`
       <div style="background:#151518; border:2px solid #fbbf24; border-radius:20px; padding:20px; width:90%; max-width:520px; margin:40px auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
           <div style="color:#fbbf24; font-weight:bold; font-size:16px;">➕ ADICIONAR CÓDIGO INDIVIDUAL NO LIVRE</div>
-          <button id="livre-modal-fechar" style="width:32px; height:32px; border-radius:9999px; background:#232326; color:white; border:none;">✕</button>
+          <button id="livre-modal-fechar" style="width:32px; height:32px; border-radius:9999px; background:#232326; color:white; border:none; cursor:pointer;">✕</button>
         </div>
+        <div style="color:#71717a; font-size:11px; margin-bottom:14px;">Adiciona 1 código por vez sem precisar importar planilha. Se já existir, soma a Qtd.</div>
         <div style="display:flex; flex-direction:column; gap:12px;">
-          <div><label style="font-size:11px; color:#fbbf24; font-weight:bold;">CÓDIGO *</label><input id="livre-modal-codigo" style="width:100%; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:15px; font-weight:bold; margin-top:6px;" placeholder="AUT100190001970" autofocus></div>
-          <div><label style="font-size:11px; color:#a1a1aa;">Descrição</label><input id="livre-modal-desc" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;" placeholder="PL MONT MEMORIA"></div>
+          <div>
+            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">CÓDIGO * (ex: AUT100190001970)</label>
+            <input id="livre-modal-codigo" style="width:100%; height:48px; background:#0e0e10; border:2px solid #fbbf24; color:white; border-radius:12px; padding:0 14px; font-size:15px; font-weight:bold; margin-top:6px;" placeholder="AUT100190001970" autofocus>
+          </div>
+          <div>
+            <label style="font-size:11px; color:#a1a1aa;">Descrição</label>
+            <input id="livre-modal-desc" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; font-size:13px; margin-top:6px;" placeholder="PL MONT MEMORIA MFD VI LATAM">
+          </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div><label style="font-size:11px; color:#a1a1aa;">Qtd *</label><input id="livre-modal-qtd" type="number" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;" placeholder="25"></div>
-            <div><label style="font-size:11px; color:#a1a1aa;">Un</label><select id="livre-modal-un" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;"><option>UN</option><option>PC</option><option>KG</option><option>CX</option></select></div>
+            <div>
+              <label style="font-size:11px; color:#a1a1aa;">Qtd *</label>
+              <input id="livre-modal-qtd" type="number" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; font-size:14px; margin-top:6px;" placeholder="25">
+            </div>
+            <div>
+              <label style="font-size:11px; color:#a1a1aa;">Unidade</label>
+              <select id="livre-modal-un" style="width:100%; height:44px; background:#0e0e10; border:1px solid #2a2a30; color:white; border-radius:12px; padding:0 12px; margin-top:6px;">
+                <option>UN</option><option>PC</option><option>KG</option><option>M</option><option>CJ</option><option>CX</option><option>RL</option>
+              </select>
+            </div>
           </div>
         </div>
-        <div id="livre-modal-msg" style="display:none; margin-top:12px; padding:10px; border-radius:10px; font-size:12px; white-space:pre-wrap;"></div>
+        <div id="livre-modal-msg" style="display:none; margin-top:12px; padding:10px; border-radius:10px; font-size:12px;"></div>
         <div style="display:flex; gap:10px; margin-top:16px;">
           <button id="livre-modal-cancelar" style="flex:1; height:44px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30; font-weight:bold;">Cancelar</button>
-          <button id="livre-modal-add" style="flex:1; height:44px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold;">+ ADICIONAR</button>
+          <button id="livre-modal-add" style="flex:1; height:44px; border-radius:9999px; background:#fbbf24; color:black; font-weight:bold; font-size:14px;">+ ADICIONAR NO LIVRE</button>
         </div>
+        <div style="margin-top:12px; font-size:10px; color:#71717a; text-align:center;">ENTER no código vai para descrição → ENTER vai para Qtd → ENTER adiciona</div>
       </div>
     `;
-    root.style.display='flex'; document.body.style.overflow='hidden';
+    root.style.display='flex';
+    document.body.style.overflow='hidden';
+
     const inpCod=document.getElementById('livre-modal-codigo');
     const inpDesc=document.getElementById('livre-modal-desc');
     const inpQtd=document.getElementById('livre-modal-qtd');
@@ -95,35 +113,33 @@ Error generating stack: `+u.message+`
     const btnCancel=document.getElementById('livre-modal-cancelar');
     const btnFechar=document.getElementById('livre-modal-fechar');
     const msg=document.getElementById('livre-modal-msg');
+
     function fechar(){ root.style.display='none'; document.body.style.overflow=''; }
-    btnCancel.onclick=fechar; btnFechar.onclick=fechar; root.onclick=(e)=>{ if(e.target===root) fechar(); };
-    async function adicionar(){
+    btnCancel.onclick=fechar; btnFechar.onclick=fechar;
+    root.onclick=(e)=>{ if(e.target===root) fechar(); };
+
+    function adicionar(){
       const codigo=(inpCod.value||'').trim();
-      if(!codigo){ msg.textContent='❌ Digite código'; msg.style.display='block'; msg.style.background='rgba(239,68,68,0.15)'; msg.style.color='#fca5a5'; return; }
+      if(!codigo){ msg.textContent='❌ Digite o código'; msg.style.display='block'; msg.style.background='rgba(239,68,68,0.15)'; msg.style.color='#fca5a5'; return; }
       const qtd=Number((inpQtd.value||'').replace(',','.'));
-      if(!qtd||qtd<=0){ msg.textContent='❌ Qtd inválida'; msg.style.display='block'; msg.style.background='rgba(239,68,68,0.15)'; msg.style.color='#fca5a5'; return; }
+      if(!qtd||qtd<=0){ msg.textContent='❌ Digite Qtd válida'; msg.style.display='block'; msg.style.background='rgba(239,68,68,0.15)'; msg.style.color='#fca5a5'; return; }
       const desc=(inpDesc.value||'').trim()||codigo;
       const un=selUn.value||'UN';
       let livre=getL();
       const idx=livre.findIndex(m=> String(m.codigo||'').toLowerCase()===codigo.toLowerCase() || String(m.sku||'').toLowerCase()===codigo.toLowerCase());
       if(idx>=0){
         let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0;
-        livre[idx].saldo=s+qtd; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo;
-        msg.textContent=`✅ Já existia! ${s} + ${qtd} = ${s+qtd}`;
+        livre[idx].saldo=s+qtd; if(livre[idx].quantidade!==undefined) livre[idx].quantidade=livre[idx].saldo;
+        msg.textContent=`✅ Código ${codigo} já existia! ${s} + ${qtd} = ${s+qtd}. Somado no LIVRE.`;
       } else {
         const novo={id:`${codigo}-${Date.now()}`, codigo:codigo, descricao:desc, sku:codigo, nome:desc, unidade:un, qtd:qtd, saldo:qtd, quantidade:qtd, valor:0, local:'LIVRE'};
         livre.push(novo);
-        msg.textContent=`✅ Novo código ${codigo} com ${qtd} ${un}`;
+        msg.textContent=`✅ Código ${codigo} adicionado no LIVRE com ${qtd} ${un} - ${desc}`;
       }
-      msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
       localStorage.setItem(KM, JSON.stringify(livre));
-      try{
-        await Promise.all([
-          fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}),
-          fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})
-        ]);
-        msg.textContent+=`\n✅ Gravado Firebase. Recarregando...`;
-      }catch(e){ msg.textContent+=`\n⚠️ Erro Firebase, mas salvo local. Recarregando...`; }
+      try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+      msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
+      inpCod.value=''; inpDesc.value=''; inpQtd.value=''; inpCod.focus();
       setTimeout(()=>{ fechar(); location.reload(); }, 1400);
     }
     btnAdd.onclick=adicionar;
@@ -135,303 +151,29 @@ Error generating stack: `+u.message+`
 
   function renderConsumo(){
     const root=document.getElementById('consumo-root'); if(!root) return;
-    const all=getAll(); const ruas=getR(); const cons=getC().slice().reverse();
-    root.innerHTML=`
-      <div style="max-width:1440px; margin:0 auto; padding:16px; font-family:Inter,system-ui;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white; border:1px solid #2a2a30;">← Voltar ao WMS</button>
-          <div style="font-size:11px; color:#10b981; border:1px solid #10b981; border-radius:9999px; padding:6px 12px;">Total geral: ${all.reduce((s,m)=>s+(m.total||0),0)} un | ${all.length} códigos</div>
-        </div>
-
-        <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="color:white; font-weight:bold; font-size:15px;">📦 CONSUMO V22 - Com localização, OP, estorno e histórico</div>
-            <div style="font-size:10px; color:#71717a; background:#0e0e10; border:1px solid #232326; border-radius:9999px; padding:4px 10px;">Histórico: ${getC().length} registros</div>
-          </div>
-
-          <div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;">
-            <label style="font-size:11px; color:#fbbf24; font-weight:bold;">🔍 PESQUISAR CÓDIGO PARA CONSUMIR (mostra localização)</label>
-            <div style="display:flex; gap:8px; margin-top:6px;">
-              <input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970 + ENTER" autofocus>
-              <button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR LOCALIZAÇÃO</button>
-            </div>
-            <div id="c-res" style="margin-top:8px;"></div>
-          </div>
-
-          <div id="c-card" style="display:none; background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:14px; margin-bottom:12px;">
-            <div style="display:flex; gap:12px;">
-              <div style="background:#7c3aed; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px; text-align:center;" id="c-icone">Rua 12<br>N07</div>
-              <div style="flex:1;">
-                <div id="c-nome" style="color:white; font-weight:bold; font-size:14px;"></div>
-                <div id="c-sku" style="color:#71717a; font-size:11px;"></div>
-                <div id="c-pos-detalhe" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div>
-                <div style="margin-top:8px; font-size:11px; color:#71717a;">Total disponível: <span id="c-total" style="color:#10b981; font-size:18px; font-weight:bold;"></span> un | <span id="c-livre-aloc"></span></div>
-              </div>
-            </div>
-          </div>
-
-          <div style="background:#0e0e10; border:1px solid #2a2a30; border-radius:12px; padding:12px;">
-            <div style="color:white; font-weight:bold; font-size:12px; margin-bottom:8px;">📝 Dados da baixa:</div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
-              <div><label style="font-size:10px; color:#a1a1aa;">Qtd a consumir *</label><input id="c-qtd" type="number" style="width:100%; height:44px; background:#151518; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:15px; font-weight:bold; margin-top:4px;" placeholder="5"></div>
-              <div><label style="font-size:10px; color:#fbbf24; font-weight:bold;">Número da OP *</label><input id="c-op" style="width:100%; height:44px; background:#151518; border:2px solid #fbbf24; color:white; border-radius:10px; padding:0 12px; font-size:14px; font-weight:bold; margin-top:4px;" placeholder="OP 12345"></div>
-              <div><label style="font-size:10px; color:#a1a1aa;">Tipo / Motivo</label><select id="c-tipo" style="width:100%; height:44px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; margin-top:4px;"><option>Produção</option><option>Perda / Quebra</option><option>Devolução</option><option>Ajuste Inventário</option><option>Outro</option></select></div>
-            </div>
-            <div style="margin-top:10px;"><label style="font-size:10px; color:#a1a1aa;">Observação (opcional)</label><input id="c-obs" style="width:100%; height:38px; background:#151518; border:1px solid #2a2a30; color:white; border-radius:10px; padding:0 12px; font-size:12px; margin-top:4px;" placeholder="Ex: Consumo linha montagem..."></div>
-            <button id="c-btn" style="width:100%; height:48px; border-radius:9999px; background:#10b981; color:black; font-weight:bold; font-size:15px; margin-top:12px;">✓ CONFIRMAR BAIXA COM OP</button>
-            <div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap; font-size:12px;"></div>
-          </div>
-        </div>
-
-        <div style="background:#151518; border:2px solid #232326; border-radius:16px; overflow:hidden;">
-          <div style="padding:12px; border-bottom:1px solid #232326; display:flex; justify-content:space-between; align-items:center;">
-            <div><b style="color:white;">📋 HISTÓRICO DE CONSUMO</b><span style="font-size:11px; color:#71717a; margin-left:8px;">(${cons.length} registros)</span></div>
-            <div style="display:flex; gap:8px;">
-              <input id="c-busca-hist" placeholder="Buscar no histórico..." style="height:32px; border-radius:9999px; background:#0e0e10; border:1px solid #232326; color:white; padding:0 12px; font-size:11px; width:160px;">
-              <button id="c-limpar-hist" style="height:32px; padding:0 12px; border-radius:9999px; background:#232326; color:white; font-size:11px; border:1px solid #2a2a30;">Limpar filtro</button>
-            </div>
-          </div>
-          <div style="overflow:auto; max-height:400px;">
-            <table style="width:100%; font-size:11px; color:#d4d4d8; border-collapse:collapse;">
-              <thead style="position:sticky; top:0; background:#0e0e10; font-size:10px; color:#71717a; border-bottom:1px solid #232326;">
-                <tr><th style="padding:10px; text-align:left;">Data/Hora</th><th style="padding:10px; text-align:left;">Código</th><th style="padding:10px; text-align:left;">Qtd</th><th style="padding:10px; text-align:left;">OP</th><th style="padding:10px; text-align:left;">Localização onde baixou</th><th style="padding:10px; text-align:left;">Obs</th><th style="padding:10px; text-align:center;">Ação</th></tr>
-              </thead>
-              <tbody id="c-tbody"></tbody>
-            </table>
-          </div>
-          <div id="c-hist-vazio" style="display:none; padding:24px; text-align:center; color:#71717a; font-size:12px;">Nenhum consumo registrado ainda. Faça uma busca e baixa acima.</div>
-        </div>
-      </div>
-    `;
+    const all=getAll();
+    root.innerHTML=`<div style="max-width:1440px; margin:0 auto; padding:16px;"><div style="display:flex; justify-content:space-between;"><button id="c-voltar" style="height:36px; padding:0 16px; border-radius:9999px; background:#232326; color:white;">← Voltar</button><div style="font-size:11px; color:#10b981;">Total: ${all.reduce((s,m)=>s+(m.total||0),0)} un</div></div>
+    <div style="background:#151518; border:2px solid #10b981; border-radius:16px; padding:16px; margin-top:12px;"><div style="color:white; font-weight:bold;">CONSUMO - Baixa que subtrai do estoque real</div><div style="background:#000; border:2px solid #10b981; border-radius:12px; padding:12px; margin:12px 0;"><div style="display:flex; gap:8px;"><input id="c-cod" style="flex:1; height:48px; background:#111; border:2px solid #10b981; color:white; border-radius:10px; padding:0 12px; font-size:16px; font-weight:bold;" placeholder="AUT100190001970"><button id="c-buscar" style="height:48px; padding:0 18px; border-radius:10px; background:#10b981; color:black; font-weight:bold;">BUSCAR</button></div><div id="c-res" style="margin-top:8px;"></div></div><div id="c-card" style="display:none; background:#0e0e10; border:1px solid #10b981; border-radius:10px; padding:12px;"><div id="c-nome" style="color:white; font-weight:bold;"></div><div id="c-sku" style="color:#71717a;"></div><div id="c-pos" style="color:#a78bfa; font-size:11px;"></div><div>Total: <span id="c-total" style="color:#10b981; font-size:20px; font-weight:bold;"></span></div></div><div style="display:flex; gap:10px; margin-top:10px;"><input id="c-qtd" type="number" style="flex:1; height:44px; background:#0e0e10; border:1px solid #232326; color:white; border-radius:10px; padding:0 12px;" placeholder="Qtd"><button id="c-btn" style="flex:1; height:44px; border-radius:9999px; background:#10b981; color:black; font-weight:bold;">BAIXAR E SUBTRAIR</button></div><div id="c-msg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; white-space:pre-wrap;"></div></div></div>`;
     document.getElementById('c-voltar').onclick=()=>{ root.style.display='none'; document.body.style.overflow=''; };
-    const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card');
-
-    let sel=null;
-
-    function renderHistorico(){
-      const tbody=document.getElementById('c-tbody');
-      const vazio=document.getElementById('c-hist-vazio');
-      const busca=(document.getElementById('c-busca-hist')?.value||'').toLowerCase();
-      let lista=getC().slice().reverse();
-      if(busca) lista=lista.filter(h=> JSON.stringify(h).toLowerCase().includes(busca));
-      if(lista.length===0){
-        tbody.innerHTML='';
-        vazio.style.display='block';
-        if(busca) vazio.textContent=`Nenhum resultado para "${busca}"`;
-        else vazio.textContent='Nenhum consumo registrado ainda. Faça uma busca e baixa acima.';
-        return;
-      }
-      vazio.style.display='none';
-      tbody.innerHTML=lista.map(h=>`
-        <tr style="border-bottom:1px solid #1e1e22;" class="hist-row">
-          <td style="padding:10px; font-size:10px; color:#71717a;">${h.data||''}</td>
-          <td style="padding:10px;"><div style="color:white; font-weight:bold; font-size:11px;">${h.sku||''}</div><div style="color:#71717a; font-size:9px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${h.nome||''}</div></td>
-          <td style="padding:10px; color:#ef4444; font-weight:bold;">-${h.qtd||0}</td>
-          <td style="padding:10px;"><span style="background:#fbbf24; color:black; border-radius:9999px; padding:3px 8px; font-size:10px; font-weight:bold;">${h.op||'SEM OP'}</span></td>
-          <td style="padding:10px; font-size:9px; color:#a78bfa; white-space:pre-wrap; max-width:180px;">${h.log||''}</td>
-          <td style="padding:10px; font-size:9px; color:#71717a; max-width:120px;">${h.obs||''}<div style="color:#71717a; font-size:8px;">${h.tipo||''}</div></td>
-          <td style="padding:10px; text-align:center;"><button class="btn-estornar" data-id="${h.id}" style="height:28px; padding:0 10px; border-radius:9999px; background:#ef4444; color:white; font-size:10px; font-weight:bold; border:none; cursor:pointer;">↩ Estornar</button></td>
-        </tr>
-      `).join('');
-
-      tbody.querySelectorAll('.btn-estornar').forEach(btn=>{
-        btn.onclick=async()=>{
-          const id=Number(btn.dataset.id);
-          const hist=getC().find(x=>x.id===id);
-          if(!hist) return;
-          if(!confirm(`Estornar ${hist.qtd} un de ${hist.sku} da OP ${hist.op}?\nIsso vai DEVOLVER o estoque.`)) return;
-
-          let pos=getP(); let livre=getL();
-          // Tenta devolver para as posições originais do log, se não, devolve para LIVRE
-          let devolvido=false;
-          // Parse logs tipo "Rua 0 0-7-1: 25->20" ou "Rua 0 Pos 0-7-1: ..."
-          const logs=(hist.log||'').split('\n');
-          let qtdRestante=Number(hist.qtd)||0;
-
-          for(const logLine of logs){
-            if(qtdRestante<=0) break;
-            // Tenta extrair posId
-            const mPos=logLine.match(/(\d+-\d+-\d+)/);
-            const mRua=logLine.match(/Rua\s+(\d+)/);
-            if(mPos && mRua && logLine.includes('Rua')){
-              const posId=mPos[1];
-              const ruaIdx=Number(mRua[1]);
-              const p=pos.find(pp=>pp.posId===posId && pp.ruaIndex===ruaIdx);
-              if(p){
-                // Verifica qtd que foi baixada nessa linha: formato "25->20" ou "25→20"
-                let baixada=0;
-                const mQtd=logLine.match(/(\d+)->(\d+)/) || logLine.match(/(\d+)→(\d+)/);
-                if(mQtd){ baixada=Number(mQtd[1])-Number(mQtd[2]); }
-                else { baixada=Math.min(qtdRestante, Number(hist.qtd)); }
-                if(baixada>0){
-                  const existente=p.itens.find(it=> String(it.materialId)===String(hist.materialId) || String(it.codigo||'').toLowerCase()===String(hist.sku||'').toLowerCase());
-                  if(existente){ existente.qtd=Number(existente.qtd||0)+baixada; }
-                  else { p.itens.push({materialId:hist.materialId, codigo:hist.sku, descricao:hist.nome||hist.sku, qtd:baixada}); }
-                  qtdRestante-=baixada;
-                  devolvido=true;
-                }
-              }
-            }
-          }
-          // Se ainda sobrou, devolve para LIVRE
-          if(qtdRestante>0){
-            const idx=livre.findIndex(m=> String(m.id)===String(hist.materialId) || String(m.codigo||'').toLowerCase()===String(hist.sku||'').toLowerCase());
-            if(idx>=0){
-              let s=livre[idx].saldo; if(s===undefined) s=livre[idx].quantidade; s=Number(String(s||0).replace(',','.'))||0;
-              livre[idx].saldo=s+qtdRestante; livre[idx].quantidade=livre[idx].saldo; livre[idx].qtd=livre[idx].saldo;
-            } else {
-              livre.push({id:hist.materialId||`${hist.sku}-${Date.now()}`, codigo:hist.sku, descricao:hist.nome||hist.sku, sku:hist.sku, nome:hist.nome||hist.sku, unidade:'UN', qtd:qtdRestante, saldo:qtdRestante, quantidade:qtdRestante, valor:0, local:'LIVRE'});
-            }
-          }
-
-          localStorage.setItem(KP, JSON.stringify(pos));
-          localStorage.setItem(KM, JSON.stringify(livre));
-          try{
-            await Promise.all([
-              fetch(FB+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}),
-              fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}),
-              fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})
-            ]);
-          }catch{}
-
-          // Remove do histórico
-          const novoHist=getC().filter(x=>x.id!==id);
-          localStorage.setItem(KC, JSON.stringify(novoHist));
-          alert(`✅ Estornado! ${hist.qtd} un de ${hist.sku} devolvidas ao estoque (OP ${hist.op})`);
-          location.reload();
-        };
-      });
-    }
-
-    function selMat(m){
-      sel=m;
-      card.style.display='block';
-      const ruas=getR();
-      document.getElementById('c-nome').textContent=m.nome||m.codigo;
-      document.getElementById('c-sku').textContent=`${m.sku} | ID: ${m.id}`;
-      document.getElementById('c-total').textContent=m.total;
-      document.getElementById('c-livre-aloc').textContent=`Livre: ${m.livre} | Alocado: ${m.aloc}`;
-
-      // Mostra localização detalhada
-      const detalhe=document.getElementById('c-pos-detalhe');
-      if(m.pos.length===0){
-        detalhe.innerHTML=`<div style="background:rgba(251,191,36,0.1); border:1px solid #fbbf24; border-radius:8px; padding:8px; font-size:11px; color:#fbbf24;">📦 Só no LIVRE - ${m.livre} un disponíveis no Livre, não alocado em nenhuma Rua ainda</div>`;
-        document.getElementById('c-icone').innerHTML='LIVRE<br>'+m.livre;
-      } else {
-        detalhe.innerHTML=m.pos.map(p=>{
-          const ruaNome=ruas[p.ri]?.nome||`Rua ${String(p.ri+1).padStart(2,'0')}`;
-          return `
-            <div style="background:#151518; border:1px solid #2a2a30; border-radius:10px; padding:8px; display:flex; justify-content:space-between; align-items:center;">
-              <div style="display:flex; gap:8px; align-items:center;">
-                <div style="background:#7c3aed; border-radius:8px; width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px; text-align:center;">${ruaNome}<br>N${String(p.ni).padStart(2,'0')}</div>
-                <div>
-                  <div style="font-size:11px; color:#a78bfa; font-weight:bold;">📍 ${ruaNome} → Nível ${p.ni} → Div ${p.dv} → Pos ${p.posId}</div>
-                  <div style="font-size:10px; color:#71717a; font-family:monospace;">PosID: ${p.posId} | RuaIndex: ${p.ri} | Qtd: ${p.q} un</div>
-                </div>
-              </div>
-              <div style="background:#7c3aed; border-radius:9999px; padding:4px 10px; font-size:11px; color:white; font-weight:bold;">${p.q} un</div>
-            </div>
-          `;
-        }).join('');
-        const primeira=m.pos[0];
-        const ruaNomePrimeira=ruas[primeira.ri]?.nome||`Rua ${String(primeira.ri+1).padStart(2,'0')}`;
-        document.getElementById('c-icone').innerHTML=`${ruaNomePrimeira}<br>N${String(primeira.ni).padStart(2,'0')}`;
-      }
-
-      const primeiraRua=m.pos[0]? (ruas[m.pos[0].ri]?.nome||`Rua ${m.pos[0].ri}`) : 'LIVRE';
-      res.innerHTML=`<div style="color:#10b981; background:rgba(16,185,129,0.1); border:1px solid #10b981; padding:8px; border-radius:8px; font-size:12px;"><div style="font-weight:bold;">✅ ENCONTRADO: ${m.sku} - Total ${m.total} un</div><div style="font-size:11px; margin-top:4px;">📍 Localização: ${m.pos.length? m.pos.map(p=>{ const rn=ruas[p.ri]?.nome||`Rua ${p.ri}`; return `${rn} N${p.ni} D${p.dv} (${p.q} un)`; }).join(', ') : 'Só no LIVRE'} | Livre: ${m.livre} | Alocado: ${m.aloc}</div></div>`;
-    }
-
-    function doBusca(){
-      const cod=inp.value.trim(); if(!cod){ res.innerHTML='<div style="color:#ef4444;">Digite código</div>'; return; }
-      const all=getAll(); let m=all.find(x=>String(x.codigo||'').toLowerCase()===cod.toLowerCase()||String(x.sku||'').toLowerCase()===cod.toLowerCase());
-      if(!m) m=all.find(x=> (x.lc&&x.lc.includes(cod.toLowerCase())) || (x.ln&&x.ln.includes(cod.toLowerCase())));
-      if(m) selMat(m); else { res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:8px; border-radius:8px;">❌ Código <b>${cod}</b> não encontrado nos ${all.length} materiais</div>`; card.style.display='none'; sel=null; }
-    }
-
+    const inp=document.getElementById('c-cod'); const btnB=document.getElementById('c-buscar'); const res=document.getElementById('c-res'); const card=document.getElementById('c-card'); let sel=null;
+    function selMat(m){ sel=m; card.style.display='block'; document.getElementById('c-nome').textContent=m.nome||m.codigo; document.getElementById('c-sku').textContent=m.sku+' Total '+m.total; document.getElementById('c-total').textContent=m.total; document.getElementById('c-pos').textContent=m.pos.map(p=>`Rua ${p.ri} ${p.posId} (${p.q})`).join(', '); res.innerHTML=`<div style="color:#10b981;">✅ ${m.sku}</div>`; }
+    function doBusca(){ const cod=inp.value.trim(); if(!cod){ res.innerHTML='Digite'; return; } const all=getAll(); let m=all.find(x=>String(x.codigo||'').toLowerCase()===cod.toLowerCase()||String(x.sku||'').toLowerCase()===cod.toLowerCase()); if(!m) m=all.find(x=>x.lc&&x.lc.includes(cod.toLowerCase())); if(m) selMat(m); else { res.innerHTML=`<div style="color:#ef4444;">❌ ${cod} não encontrado</div>`; card.style.display='none'; sel=null; } }
     btnB.onclick=doBusca; inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doBusca(); } });
-
-    // Histórico busca
-    const buscaHist=document.getElementById('c-busca-hist');
-    const limparHist=document.getElementById('c-limpar-hist');
-    buscaHist?.addEventListener('input', renderHistorico);
-    limparHist?.addEventListener('click', ()=>{ buscaHist.value=''; renderHistorico(); });
-
-    renderHistorico();
-
-    document.getElementById('c-btn').onclick=async()=>{
+    document.getElementById('c-btn').onclick=()=>{
       try{
-        if(!sel){ alert('Busque o código primeiro! Digite AUT100190001970 e clique BUSCAR LOCALIZAÇÃO'); return; }
-        const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Digite Qtd válida'); return; }
-        if(q>sel.total){ alert(`Saldo insuficiente! Total: ${sel.total} | Você tentou consumir: ${q}`); return; }
-        const op=(document.getElementById('c-op').value||'').trim();
-        if(!op){ alert('Digite o número da OP! É obrigatório para rastreabilidade.'); document.getElementById('c-op').focus(); return; }
-        const tipo=document.getElementById('c-tipo').value||'Produção';
-        const obs=(document.getElementById('c-obs').value||'').trim();
-
+        if(!sel){ alert('Busque'); return; }
+        const q=Number((document.getElementById('c-qtd').value||'').replace(',','.')); if(!q||q<=0){ alert('Qtd inválida'); return; }
+        if(q>sel.total){ alert('Saldo insuf: '+sel.total); return; }
         let rest=q; let pos=getP(); let livre=getL(); let logs=[];
-        const ruas=getR();
-        for(const p of pos){
-          if(rest<=0) break;
-          for(let i=0;i<(p.itens||[]).length;i++){
-            if(rest<=0) break;
-            const it=p.itens[i];
-            if(String(it.materialId)===String(sel.id) || String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
-              const disp=Number(it.qtd)||0; if(disp<=0) continue;
-              const usar=Math.min(disp, rest);
-              const ruaNome=ruas[p.ruaIndex]?.nome||`Rua ${p.ruaIndex}`;
-              logs.push(`${ruaNome} N${p.nivel} D${p.div} Pos ${p.posId}: ${disp}→${disp-usar} (-${usar})`);
-              it.qtd=disp-usar; rest-=usar;
-              if(it.qtd<=0){ p.itens.splice(i,1); i--; }
-            }
-          }
-        }
+        for(const p of pos){ if(rest<=0) break; for(let i=0;i<(p.itens||[]).length;i++){ if(rest<=0) break; const it=p.itens[i]; if(String(it.materialId)===String(sel.id) || String(it.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ const disp=Number(it.qtd)||0; if(disp<=0) continue; const usar=Math.min(disp, rest); logs.push(`Rua ${p.ruaIndex} ${p.posId}: ${disp}->${disp-usar}`); it.qtd=disp-usar; rest-=usar; if(it.qtd<=0){ p.itens.splice(i,1); i--; } } } }
         pos=pos.map(p=>{ p.itens=(p.itens||[]).filter(it=>Number(it.qtd)>0); return p; });
-        if(rest>0){
-          for(const m of livre){
-            if(String(m.id)===String(sel.id) || String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){
-              let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0;
-              const usar=Math.min(s, rest);
-              logs.push(`LIVRE: ${s}→${s-usar} (-${usar})`);
-              m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; m.qtd=m.saldo;
-              rest-=usar; break;
-            }
-          }
-        }
-        if(rest>0){ alert(`Faltam ${rest} un! Disponível: ${q-rest}`); return; }
-
-        localStorage.setItem(KP, JSON.stringify(pos));
-        localStorage.setItem(KM, JSON.stringify(livre));
-        try{
-          await Promise.all([
-            fetch(FB+'/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}),
-            fetch(FB+'/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}),
-            fetch(FB+'/material_livre.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}})
-          ]);
-        }catch{}
-
-        const reg={
-          id:Date.now(),
-          materialId:sel.id,
-          sku:sel.sku,
-          nome:sel.nome||sel.codigo,
-          qtd:q,
-          op:op,
-          tipo:tipo,
-          obs:obs,
-          data:new Date().toLocaleString('pt-BR'),
-          log:logs.join('\n'),
-          totalAntes:sel.total,
-          totalDepois:sel.total-q
-        };
-        const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
-
-        const msg=document.getElementById('c-msg');
-        msg.textContent=`✅ BAIXA REALIZADA COM OP!\n${q} un de ${sel.sku}\nOP: ${op} | Tipo: ${tipo}\n`+logs.join('\n')+`\n\nDe: ${sel.total} → Para: ${sel.total-q} un\nRecarregando em 2s...`;
-        msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; msg.style.border='1px solid #10b981';
-        renderHistorico();
-        setTimeout(()=>location.reload(), 2000);
-      }catch(e){ alert('Erro: '+e.message); console.error(e); }
+        if(rest>0){ for(const m of livre){ if(String(m.id)===String(sel.id) || String(m.codigo||'').toLowerCase()===String(sel.codigo||'').toLowerCase()){ let s=m.saldo; if(s===undefined) s=m.quantidade; s=Number(String(s||0).replace(',','.'))||0; const usar=Math.min(s, rest); logs.push(`LIVRE: ${s}->${s-usar}`); m.saldo=s-usar; if(m.quantidade!==undefined) m.quantidade=m.saldo; rest-=usar; break; } } }
+        if(rest>0){ alert('Faltam '+rest); return; }
+        localStorage.setItem(KP, JSON.stringify(pos)); localStorage.setItem(KM, JSON.stringify(livre));
+        try{ fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/posicoes.json', {method:'PUT', body:JSON.stringify(pos), headers:{'Content-Type':'application/json'}}).catch(()=>{}); fetch('https://controle-de-estoque-98bf1-default-rtdb.firebaseio.com/wms_final/materiais.json', {method:'PUT', body:JSON.stringify(livre), headers:{'Content-Type':'application/json'}}).catch(()=>{}); }catch{}
+        const reg={id:Date.now(), materialId:sel.id, sku:sel.sku, nome:sel.nome, qtd:q, data:new Date().toLocaleString('pt-BR'), log:logs.join('\n')}; const allC=getC(); allC.push(reg); localStorage.setItem(KC, JSON.stringify(allC));
+        const msg=document.getElementById('c-msg'); msg.textContent=`✅ BAIXADO ${q} de ${sel.sku}\n`+logs.join('\n')+`\nRecarregando...`; msg.style.display='block'; msg.style.background='rgba(16,185,129,0.15)'; msg.style.color='#a7f3d0'; setTimeout(()=>location.reload(),1500);
+      }catch(e){ alert(e.message); }
     };
   }
 
@@ -441,26 +183,26 @@ Error generating stack: `+u.message+`
         const isEstoque = Array.from(document.querySelectorAll('button')).some(b=> (b.className||'').includes('bg-white') && (b.textContent||'').includes('Estoque'));
         if(!isEstoque) return;
         const main=document.querySelector('main'); if(!main) return;
-        if(document.getElementById('pesquisa-estoque-bar-v22')) return;
+        if(document.getElementById('pesquisa-estoque-bar-v20')) return;
         const ruas=getR();
         const bar=document.createElement('div');
-        bar.id='pesquisa-estoque-bar-v22';
+        bar.id='pesquisa-estoque-bar-v20';
         bar.style.cssText='background:#151518; border:2px solid #7c3aed; border-radius:16px; padding:14px; margin-bottom:14px;';
         bar.innerHTML=`
           <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><div style="color:white; font-weight:bold; font-size:14px;">🔍 PESQUISAR CÓDIGO - Mostra localização exata</div><div style="font-size:10px; color:#71717a;">${ruas.length} ruas</div></div>
-          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v22" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v22" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR LOCAL</button><button id="estoque-busca-limpar-v22" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
-          <div id="estoque-busca-res-v22" style="margin-top:12px;"></div>
+          <div style="display:flex; gap:8px;"><input id="estoque-busca-input-v20" style="flex:1; height:44px; background:#0e0e10; border:2px solid #7c3aed; color:white; border-radius:12px; padding:0 14px; font-size:14px; font-weight:bold;" placeholder="AUT100190001970 + ENTER"><button id="estoque-busca-btn-v20" style="height:44px; padding:0 18px; border-radius:12px; background:#7c3aed; color:white; font-weight:bold;">BUSCAR LOCAL</button><button id="estoque-busca-limpar-v20" style="height:44px; padding:0 12px; border-radius:12px; background:#232326; color:white;">Limpar</button></div>
+          <div id="estoque-busca-res-v20" style="margin-top:12px;"></div>
         `;
         main.prepend(bar);
-        const inp=document.getElementById('estoque-busca-input-v22');
-        const btn=document.getElementById('estoque-busca-btn-v22');
-        const btnLimpar=document.getElementById('estoque-busca-limpar-v22');
-        const res=document.getElementById('estoque-busca-res-v22');
+        const inp=document.getElementById('estoque-busca-input-v20');
+        const btn=document.getElementById('estoque-busca-btn-v20');
+        const btnLimpar=document.getElementById('estoque-busca-limpar-v20');
+        const res=document.getElementById('estoque-busca-res-v20');
         function buscarNoEstoque(){
           const cod=(inp.value||'').trim().toLowerCase(); if(!cod){ res.innerHTML=''; return; }
           const pos=getP(); const ruas=getR(); const achados=[];
           for(const p of pos){ for(const it of (p.itens||[])){ if(String(it.codigo||'').toLowerCase().includes(cod)){ const ruaNome = ruas[p.ruaIndex]?.nome || `Rua ${String(p.ruaIndex+1).padStart(2,'0')}`; achados.push({pos:p, item:it, ruaNome}); } } }
-          if(achados.length===0){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ ${cod} não encontrado</div>`; }
+          if(achados.length===0){ res.innerHTML=`<div style="color:#ef4444; background:rgba(239,68,68,0.1); padding:10px; border-radius:10px;">❌ ${cod} não encontrado em nenhuma Rua</div>`; }
           else {
             res.innerHTML=`<div style="background:#0e0e10; border:2px solid #10b981; border-radius:12px; padding:12px;"><div style="color:#10b981; font-weight:bold; margin-bottom:10px;">✅ ${achados.length} localização(ões):</div>${achados.map(a=>`<div style="background:#151518; border:1px solid #2a2a30; border-radius:12px; padding:12px; display:flex; gap:12px; margin-bottom:8px;"><div style="background:#7c3aed; border-radius:10px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px; text-align:center;">${a.ruaNome}<br>N${String(a.pos.nivel).padStart(2,'0')}</div><div style="flex:1;"><div style="color:white; font-weight:bold;">${a.item.codigo}</div><div style="color:#a1a1aa; font-size:11px;">${a.item.descricao||''}</div><div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#a78bfa;">📍 ${a.ruaNome}</span><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#10b981;">Nível ${String(a.pos.nivel).padStart(2,'0')}</span><span style="background:#0e0e10; border:1px solid #2a2a30; border-radius:9999px; padding:4px 10px; font-size:11px; color:#fbbf24;">D${String(a.pos.div).padStart(2,'0')}</span><span style="background:#7c3aed; border-radius:9999px; padding:4px 10px; font-size:11px; color:white; font-weight:bold;">Qtd: ${a.item.qtd}</span></div><div style="margin-top:6px; font-size:11px; color:#10b981; font-family:monospace;">${a.ruaNome} → N${a.pos.nivel} → D${a.pos.div} → ${a.pos.posId}</div></div></div>`).join('')}</div>`;
           }
@@ -470,12 +212,7 @@ Error generating stack: `+u.message+`
     }, 800);
   }
 
-  function openConsumo(){
-    const r=document.getElementById('consumo-root');
-    renderConsumo();
-    r.style.display='block';
-    document.body.style.overflow='hidden';
-  }
+  function openConsumo(){ const r=document.getElementById('consumo-root'); renderConsumo(); r.style.display='block'; document.body.style.overflow='hidden'; }
 
   function inject(){
     try{
@@ -483,15 +220,17 @@ Error generating stack: `+u.message+`
       for(const d of document.querySelectorAll('div')){ if(d.className&&typeof d.className==='string'&&d.className.includes('max-w-[1440px]')&&d.className.includes('pt-6')){ if((d.textContent||'').includes('Livre')){ bar=d; break; } } }
       if(!bar){ const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent && x.textContent.includes('Livre')); if(b) bar=b.parentElement; }
       if(!bar) return false;
-      if(bar.querySelector('#btn-v22-consumo')) return true;
+      if(bar.querySelector('#btn-v20-consumo')) return true;
       const btnConsumo=document.createElement('button');
-      btnConsumo.id='btn-v22-consumo'; btnConsumo.textContent=`📦 Consumo • ${getC().length}`;
+      btnConsumo.id='btn-v20-consumo'; btnConsumo.textContent='📦 Consumo';
       btnConsumo.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #10b981; background:#10b981; color:black; font-weight:bold; margin-right:8px;';
       btnConsumo.onclick=openConsumo;
+
       const btnLivre=document.createElement('button');
-      btnLivre.id='btn-v22-livre'; btnLivre.textContent='➕ Código Livre';
+      btnLivre.id='btn-v20-livre'; btnLivre.textContent='➕ Código Livre';
       btnLivre.style.cssText='height:36px; padding:0 18px; border-radius:9999px; font-size:13px; border:2px solid #fbbf24; background:#fbbf24; color:black; font-weight:bold;';
       btnLivre.onclick=()=>{ renderLivreModal(); };
+
       bar.appendChild(btnConsumo);
       bar.appendChild(btnLivre);
       renderEstoqueSearch();
